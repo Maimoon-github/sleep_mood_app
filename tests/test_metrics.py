@@ -112,6 +112,16 @@ class TestMetricsAndInstruments(unittest.TestCase):
         self.assertTrue(sj["sufficient_data"])
         self.assertAlmostEqual(sj["social_jetlag_hours"], 3.0, places=1)
         self.assertTrue(sj["flagged"])
+        self.assertEqual(sj["workday_midsleep_hhmm"], "03:00 AM")
+        self.assertEqual(sj["freeday_midsleep_hhmm"], "06:00 AM")
+
+    def test_format_time_ampm(self):
+        from metrics import format_time_ampm
+        self.assertEqual(format_time_ampm("23:00"), "11:00 PM")
+        self.assertEqual(format_time_ampm("07:00"), "07:00 AM")
+        self.assertEqual(format_time_ampm("00:15"), "12:15 AM")
+        self.assertEqual(format_time_ampm("12:30"), "12:30 PM")
+        self.assertEqual(format_time_ampm(None), "—")
 
     def test_sleep_debt_accumulation(self):
         df = pd.DataFrame({

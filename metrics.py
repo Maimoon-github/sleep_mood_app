@@ -68,13 +68,31 @@ def compute_sleep_metrics(
     return result
 
 
+def format_time_ampm(time_val: str | time | None) -> str:
+    """Format an ISO time string ('23:00' or '23:00:00') or time object into 12-hour AM/PM format ('11:00 PM')."""
+    if not time_val or pd.isna(time_val):
+        return "—"
+    try:
+        if isinstance(time_val, str):
+            clean_str = time_val.strip()
+            if not clean_str:
+                return "—"
+            clean_str = clean_str[:5]
+            t = time.fromisoformat(clean_str)
+        else:
+            t = time_val
+        return t.strftime("%I:%M %p")
+    except Exception:
+        return str(time_val)
+
+
 def compute_social_jetlag(df: pd.DataFrame) -> dict:
     """Compute Social Jetlag (Roenneberg et al., 2012; Wittmann et al., 2006).
 
     Social jetlag is the absolute discrepancy between mid-sleep time on free days
     (weekend nights: Fri/Sat) and work days (weekday nights: Sun-Thu).
-    Returns mean workday mid-sleep, mean free-day mid-sleep, difference in hours,
-    and clinical flag indicator.
+    Returns mean workday mid-sleep, mean free-day mid-sleep in 12-hour AM/PM format,
+    difference in hours, and clinical flag indicator.
     """
     res = {
         "workday_midsleep_hhmm": None,
@@ -100,8 +118,6 @@ def compute_social_jetlag(df: pd.DataFrame) -> dict:
         return res
 
     def _mean_clock_minutes(mins_series):
-        # Circular mean or linear mean (if mid-sleep is clustered around 01:00-06:00,
-        # angles in radians avoid midnight wrap distortion)
         angles = 2.0 * np.pi * mins_series / 1440.0
         s = np.sin(angles).mean()
         c = np.cos(angles).mean()
@@ -115,14 +131,14 @@ def compute_social_jetlag(df: pd.DataFrame) -> dict:
     diff_mins = min(diff_mins, 1440.0 - diff_mins)
     diff_hours = diff_mins / 60.0
 
-    def _mins_to_hhmm(m):
+    def _mins_to_ampm(m):
         h = int(m // 60) % 24
         mn = int(m % 60)
-        return f"{h:02d}:{mn:02d}"
+        return time(h, mn).strftime("%I:%M %p")
 
     res.update({
-        "workday_midsleep_hhmm": _mins_to_hhmm(msw),
-        "freeday_midsleep_hhmm": _mins_to_hhmm(msf),
+        "workday_midsleep_hhmm": _mins_to_ampm(msw),
+        "freeday_midsleep_hhmm": _mins_to_ampm(msf),
         "social_jetlag_hours": round(diff_hours, 2),
         "flagged": diff_hours >= config.SOCIAL_JETLAG_FLAG_HOURS,
         "sufficient_data": True,
@@ -213,6 +229,8 @@ def build_sleep_dataframe(entries: list[dict]) -> pd.DataFrame:
             "date": pd.to_datetime(e["entry_date"]),
             "bedtime": e.get("bedtime"),
             "wake_time": e.get("wake_time"),
+            "bedtime_ampm": format_time_ampm(e.get("bedtime")),
+            "wake_time_ampm": format_time_ampm(e.get("wake_time")),
             "bedtime_minutes": bt_minutes,
             "wake_minutes": wt_minutes,
             "mid_sleep_minutes": mid_sleep,
@@ -252,6 +270,8 @@ def build_mood_daily_dataframe(entries: list[dict]) -> pd.DataFrame:
 STANDARD_SLEEP_COLS = {
     "bedtime": None,
     "wake_time": None,
+    "bedtime_ampm": "—",
+    "wake_time_ampm": "—",
     "bedtime_minutes": np.nan,
     "wake_minutes": np.nan,
     "mid_sleep_minutes": np.nan,

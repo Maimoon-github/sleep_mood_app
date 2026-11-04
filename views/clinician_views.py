@@ -212,7 +212,9 @@ def patient_review():
                 s = s_match[0]
                 sm = metrics.compute_sleep_metrics(selected_date_str, s.get("bedtime"), s.get("wake_time"), s.get("sleep_onset_latency_min"), s.get("waso_min"))
                 sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-                sc1.metric("Bedtime → Wake", f"{s.get('bedtime', '—')} → {s.get('wake_time', '—')}")
+                bed_str = metrics.format_time_ampm(s.get('bedtime'))
+                wake_str = metrics.format_time_ampm(s.get('wake_time'))
+                sc1.metric("Bedtime → Wake", f"{bed_str} → {wake_str}")
                 sc2.metric("Time in Bed (TIB)", f"{sm['tib_min'] / 60.0:.1f} h" if sm['valid'] else "—")
                 sc3.metric("Total Sleep Time (TST)", f"{sm['tst_min'] / 60.0:.1f} h" if sm['valid'] else "—")
                 sc4.metric("Sleep Efficiency", f"{sm['sleep_efficiency_pct']:.0f}%" if sm['valid'] else "—")
@@ -241,8 +243,20 @@ def patient_review():
                         st.altair_chart(chart_circ, use_container_width=True)
 
                 st.markdown("**Logged Momentary Check-Ins**")
-                m_table = pd.DataFrame(m_match)[["entry_timestamp", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "dominant_emotion", "notes"]]
-                st.dataframe(m_table, hide_index=True, use_container_width=True)
+                m_table = pd.DataFrame(m_match).copy()
+                m_table["Time (AM/PM)"] = pd.to_datetime(m_table["entry_timestamp"]).dt.strftime("%I:%M %p")
+                cols_to_disp = [c for c in ["Time (AM/PM)", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "dominant_emotion", "notes"] if c in m_table.columns]
+                st.dataframe(
+                    m_table[cols_to_disp].rename(columns={
+                        "mood_score_1_10": "Mood (Valence)",
+                        "anxiety_1_10": "Anxiety",
+                        "energy_1_10": "Energy",
+                        "dominant_emotion": "Emotion",
+                        "notes": "Patient Notes",
+                    }),
+                    hide_index=True,
+                    use_container_width=True,
+                )
             else:
                 st.info(f"No mood check-ins logged on {selected_date_str}.")
 

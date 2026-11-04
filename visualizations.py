@@ -94,6 +94,12 @@ def sleep_timing_chart(df: pd.DataFrame) -> alt.Chart | None:
     # Wake earlier than bedtime ⇒ crossed midnight; shift forward for plotting.
     d.loc[d["wake_dt"] <= d["bed_dt"], "wake_dt"] += pd.Timedelta(days=1)
     d["mid_dt"] = d["bed_dt"] + (d["wake_dt"] - d["bed_dt"]) / 2
+
+    if "bedtime_ampm" not in d.columns or d["bedtime_ampm"].isna().all():
+        from metrics import format_time_ampm
+        d["bedtime_ampm"] = d["bedtime"].apply(format_time_ampm)
+        d["wake_time_ampm"] = d["wake_time"].apply(format_time_ampm)
+
     return (
         alt.Chart(d)
         .mark_bar(color="#5ba3d0", size=18)
@@ -104,8 +110,8 @@ def sleep_timing_chart(df: pd.DataFrame) -> alt.Chart | None:
             detail="mid_dt:T",
             tooltip=[
                 alt.Tooltip("date:T", title="Date"),
-                alt.Tooltip("bedtime:N", title="Bedtime"),
-                alt.Tooltip("wake_time:N", title="Wake time"),
+                alt.Tooltip("bedtime_ampm:N", title="Bedtime (AM/PM)"),
+                alt.Tooltip("wake_time_ampm:N", title="Wake Time (AM/PM)"),
             ],
         )
         .properties(height=240, title="Sleep timing (diary bed/wake times)")
@@ -329,7 +335,7 @@ def intraday_mood_chart(entries: list[dict]) -> alt.Chart | None:
     if "entry_timestamp" not in d.columns:
         return None
     d["time_dt"] = pd.to_datetime(d["entry_timestamp"])
-    d["time_str"] = d["time_dt"].dt.strftime("%H:%M")
+    d["time_str"] = d["time_dt"].dt.strftime("%I:%M %p")
     cols = [c for c in ["mood_score_1_10", "anxiety_1_10", "energy_1_10"] if c in d.columns]
     if not cols:
         return None
@@ -356,11 +362,11 @@ def intraday_mood_chart(entries: list[dict]) -> alt.Chart | None:
         alt.Chart(melted)
         .mark_line(point=True, strokeWidth=2)
         .encode(
-            x=alt.X("time_dt:T", title="Time of Day", axis=alt.Axis(format="%H:%M")),
+            x=alt.X("time_dt:T", title="Time of Day (AM/PM)", axis=alt.Axis(format="%I:%M %p")),
             y=alt.Y("rating:Q", title="Rating (1–10)", scale=alt.Scale(domain=[0, 10])),
             color=alt.Color("metric_label:N", scale=color_scale, title="Dimension"),
             tooltip=[
-                alt.Tooltip("time_str:N", title="Timestamp"),
+                alt.Tooltip("time_str:N", title="Time (AM/PM)"),
                 alt.Tooltip("metric_label:N", title="Metric"),
                 alt.Tooltip("rating:Q", title="Score (/10)"),
             ],
@@ -390,6 +396,8 @@ def circumplex_affect_chart(entries: list[dict]) -> alt.Chart | None:
     if "dominant_emotion" not in d.columns or d["dominant_emotion"].isna().all():
         d["dominant_emotion"] = "Check-in"
 
+    d["time_ampm"] = pd.to_datetime(d["entry_timestamp"]).dt.strftime("%I:%M %p")
+
     pts = (
         alt.Chart(d)
         .mark_circle(size=140, opacity=0.85)
@@ -398,7 +406,7 @@ def circumplex_affect_chart(entries: list[dict]) -> alt.Chart | None:
             y=alt.Y("energy_1_10:Q", title="Arousal: Deactivation/Fatigue (1) → Activation/Energy (10)", scale=alt.Scale(domain=[0.5, 10.5])),
             color=alt.Color("dominant_emotion:N", title="Emotion / State", scale=alt.Scale(scheme="category10")),
             tooltip=[
-                alt.Tooltip("entry_timestamp:N", title="Time"),
+                alt.Tooltip("time_ampm:N", title="Time (AM/PM)"),
                 alt.Tooltip("mood_score_1_10:Q", title="Valence (/10)"),
                 alt.Tooltip("energy_1_10:Q", title="Arousal (/10)"),
                 alt.Tooltip("anxiety_1_10:Q", title="Anxiety (/10)"),

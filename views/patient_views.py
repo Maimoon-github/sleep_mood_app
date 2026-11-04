@@ -121,7 +121,9 @@ def dashboard():
                 s = s_match[0]
                 sm = metrics.compute_sleep_metrics(selected_date_str, s.get("bedtime"), s.get("wake_time"), s.get("sleep_onset_latency_min"), s.get("waso_min"))
                 sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-                sc1.metric("Bedtime → Wake", f"{s.get('bedtime', '—')} → {s.get('wake_time', '—')}")
+                bed_str = metrics.format_time_ampm(s.get('bedtime'))
+                wake_str = metrics.format_time_ampm(s.get('wake_time'))
+                sc1.metric("Bedtime → Wake", f"{bed_str} → {wake_str}")
                 sc2.metric("Time in Bed (TIB)", f"{sm['tib_min'] / 60.0:.1f} h" if sm['valid'] else "—")
                 sc3.metric("Total Sleep (TST)", f"{sm['tst_min'] / 60.0:.1f} h" if sm['valid'] else "—")
                 sc4.metric("Sleep Efficiency", f"{sm['sleep_efficiency_pct']:.0f}%" if sm['valid'] else "—")
@@ -150,8 +152,22 @@ def dashboard():
                         st.altair_chart(chart_circ, use_container_width=True)
 
                 st.markdown("**Logged Momentary Check-ins**")
-                m_table = pd.DataFrame(m_match)[["entry_timestamp", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "dominant_emotion", "notes"]]
-                st.dataframe(m_table, hide_index=True, use_container_width=True)
+                m_table = pd.DataFrame(m_match).copy()
+                m_table["Time (AM/PM)"] = pd.to_datetime(m_table["entry_timestamp"]).dt.strftime("%I:%M %p")
+                cols_to_disp = [c for c in ["Time (AM/PM)", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "dominant_emotion", "notes"] if c in m_table.columns]
+                st.dataframe(
+                    m_table[cols_to_disp].rename(
+                        columns={
+                            "mood_score_1_10": "Mood (Valence)",
+                            "anxiety_1_10": "Anxiety",
+                            "energy_1_10": "Energy",
+                            "dominant_emotion": "Emotion",
+                            "notes": "Notes",
+                        }
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
             else:
                 st.info(f"No mood check-ins logged on {selected_date_str}.")
 
@@ -301,11 +317,11 @@ def sleep_entry():
         entry_date = st.date_input("Night date (the date you went to bed)", value=date.today() - timedelta(days=1))
         c1, c2 = st.columns(2)
         with c1:
-            bedtime = st.time_input("Bedtime (lights out / attempted sleep)", value=datetime.strptime("23:00", "%H:%M").time())
+            bedtime = st.time_input("Bedtime (lights out, AM/PM)", value=datetime.strptime("23:00", "%H:%M").time())
             sol = st.number_input("Minutes to fall asleep (Sleep Onset Latency - SOL)", min_value=0.0, max_value=600.0, value=20.0, step=5.0)
             awakenings = st.number_input("Number of awakenings during night", min_value=0, max_value=20, value=1, step=1)
         with c2:
-            wake_time = st.time_input("Final wake-up time", value=datetime.strptime("07:00", "%H:%M").time())
+            wake_time = st.time_input("Final wake-up time (AM/PM)", value=datetime.strptime("07:00", "%H:%M").time())
             waso = st.number_input("Minutes awake after falling asleep (WASO)", min_value=0.0, max_value=600.0, value=15.0, step=5.0)
             quality = st.slider("Sleep quality (1 = very poor, 5 = very good)", 1, 5, 3)
         context_selected = st.multiselect("Relevant night context factors (optional)", config.CONTEXT_TAG_CHOICES)
@@ -325,7 +341,18 @@ def sleep_entry():
     entries = database.get_sleep_entries(_patient_id())
     if entries:
         df = metrics.build_sleep_dataframe(entries[-14:])
-        st.dataframe(df[["date", "bedtime", "wake_time", "tst_hours", "sleep_efficiency_pct", "sleep_quality", "notes"]], hide_index=True, use_container_width=True)
+        disp_cols = [c for c in ["date", "bedtime_ampm", "wake_time_ampm", "tst_hours", "sleep_efficiency_pct", "sleep_quality", "notes"] if c in df.columns]
+        st.dataframe(
+            df[disp_cols].rename(columns={
+                "bedtime_ampm": "Bedtime (AM/PM)",
+                "wake_time_ampm": "Wake Time (AM/PM)",
+                "tst_hours": "TST (h)",
+                "sleep_efficiency_pct": "SE (%)",
+                "sleep_quality": "Quality (/5)",
+            }),
+            hide_index=True,
+            use_container_width=True,
+        )
         st.markdown("**Delete an entry**")
         with st.form("sleep_delete_form"):
             dates = [e["entry_date"] for e in entries]
@@ -351,7 +378,7 @@ def mood_entry():
         c1, c2 = st.columns(2)
         with c1:
             entry_date = st.date_input("Date", value=date.today())
-            entry_time = st.time_input("Time", value=datetime.now().time())
+            entry_time = st.time_input("Time (AM/PM)", value=datetime.now().time())
             dominant_emotion = st.selectbox(
                 "Primary Emotion / State",
                 ["Calm", "Content", "Happy", "Energetic", "Anxious", "Sad", "Irritable", "Exhausted", "Numb"],
@@ -375,17 +402,26 @@ def mood_entry():
             )
             st.success("Mood check-in recorded.")
             st.rerun()
-            st.success("Mood entry saved.")
-            st.rerun()
     st.markdown("---")
     st.markdown("**Recent mood entries**")
     entries = database.get_mood_entries(_patient_id())
     if entries:
-        df = pd.DataFrame(entries).tail(20)
-        st.dataframe(df[["id", "entry_timestamp", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "notes"]], hide_index=True, use_container_width=True)
+        df = pd.DataFrame(entries).tail(20).copy()
+        df["Time (AM/PM)"] = pd.to_datetime(df["entry_timestamp"]).dt.strftime("%I:%M %p")
+        disp_m_cols = [c for c in ["id", "entry_date", "Time (AM/PM)", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "dominant_emotion", "notes"] if c in df.columns]
+        st.dataframe(
+            df[disp_m_cols].rename(columns={
+                "mood_score_1_10": "Mood (/10)",
+                "anxiety_1_10": "Anxiety (/10)",
+                "energy_1_10": "Energy (/10)",
+                "dominant_emotion": "Emotion",
+            }),
+            hide_index=True,
+            use_container_width=True,
+        )
         st.markdown("**Delete an entry**")
         with st.form("mood_delete_form"):
-            ids = {f"{e['entry_timestamp']}  (mood {e['mood_score_1_10']})": e["id"] for e in entries}
+            ids = {f"{e['entry_date']} at {pd.to_datetime(e['entry_timestamp']).strftime('%I:%M %p')} (Mood: {e['mood_score_1_10']}/10)": e["id"] for e in entries}
             pick = st.selectbox("Entry to delete", list(ids.keys()))
             confirm = st.checkbox("Yes, permanently delete this mood entry.")
             if st.form_submit_button("Delete"):
