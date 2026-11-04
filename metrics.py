@@ -68,6 +68,96 @@ def compute_sleep_metrics(
     return result
 
 
+def compute_social_jetlag(df: pd.DataFrame) -> dict:
+    """Compute Social Jetlag (Roenneberg et al., 2012; Wittmann et al., 2006).
+
+    Social jetlag is the absolute discrepancy between mid-sleep time on free days
+    (weekend nights: Fri/Sat) and work days (weekday nights: Sun-Thu).
+    Returns mean workday mid-sleep, mean free-day mid-sleep, difference in hours,
+    and clinical flag indicator.
+    """
+    res = {
+        "workday_midsleep_hhmm": None,
+        "freeday_midsleep_hhmm": None,
+        "social_jetlag_hours": None,
+        "flagged": False,
+        "sufficient_data": False,
+    }
+    if df is None or df.empty or "mid_sleep_minutes" not in df.columns or "date" not in df.columns:
+        return res
+    sub = df.dropna(subset=["mid_sleep_minutes", "valid_sleep"]).copy()
+    sub = sub[sub["valid_sleep"]]
+    if len(sub) < 4:
+        return res
+
+    # In diary dates: day-of-week 4=Friday, 5=Saturday are free/weekend sleep nights
+    # 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 6=Sunday are work/school sleep nights
+    sub["weekday"] = sub["date"].dt.day_of_week
+    workdays = sub[sub["weekday"].isin([0, 1, 2, 3, 6])]
+    freedays = sub[sub["weekday"].isin([4, 5])]
+
+    if len(workdays) < 2 or len(freedays) < 1:
+        return res
+
+    def _mean_clock_minutes(mins_series):
+        # Circular mean or linear mean (if mid-sleep is clustered around 01:00-06:00,
+        # angles in radians avoid midnight wrap distortion)
+        angles = 2.0 * np.pi * mins_series / 1440.0
+        s = np.sin(angles).mean()
+        c = np.cos(angles).mean()
+        mean_angle = np.arctan2(s, c) % (2.0 * np.pi)
+        return (mean_angle / (2.0 * np.pi)) * 1440.0
+
+    msw = _mean_clock_minutes(workdays["mid_sleep_minutes"])
+    msf = _mean_clock_minutes(freedays["mid_sleep_minutes"])
+
+    diff_mins = abs(msf - msw)
+    diff_mins = min(diff_mins, 1440.0 - diff_mins)
+    diff_hours = diff_mins / 60.0
+
+    def _mins_to_hhmm(m):
+        h = int(m // 60) % 24
+        mn = int(m % 60)
+        return f"{h:02d}:{mn:02d}"
+
+    res.update({
+        "workday_midsleep_hhmm": _mins_to_hhmm(msw),
+        "freeday_midsleep_hhmm": _mins_to_hhmm(msf),
+        "social_jetlag_hours": round(diff_hours, 2),
+        "flagged": diff_hours >= config.SOCIAL_JETLAG_FLAG_HOURS,
+        "sufficient_data": True,
+    })
+    return res
+
+
+def compute_affective_instability_mssd(series: pd.Series) -> float | None:
+    """Compute Mean Squared Successive Difference (MSSD) for mood ratings.
+
+    MSSD (Ebner-Priemer et al., 2007; Jahng et al., 2008) measures temporal mood
+    instability / emotional volatility by quantifying the magnitude of sequential
+    fluctuations: MSSD = 1/(N-1) * sum((x_{i+1} - x_i)^2).
+    Unlike standard deviation, MSSD is sensitive to the temporal order and
+    frequency of mood swings and is not inflated by slow monotonic trends.
+    """
+    if series is None:
+        return None
+    valid = series.dropna().to_numpy(dtype=float)
+    if len(valid) < 3:
+        return None
+    diffs = np.diff(valid)
+    return float(np.mean(diffs ** 2))
+
+
+def compute_sleep_debt(df: pd.DataFrame, baseline_hours: float = config.SLEEP_DEBT_BASELINE_HOURS) -> pd.DataFrame:
+    """Compute nightly sleep deficit and rolling cumulative sleep debt."""
+    if df is None or df.empty or "tst_hours" not in df.columns:
+        return pd.DataFrame()
+    d = df.sort_values("date").copy()
+    d["nightly_deficit_hours"] = np.maximum(0.0, baseline_hours - d["tst_hours"].fillna(baseline_hours))
+    d["cumulative_debt_hours"] = d["nightly_deficit_hours"].cumsum()
+    return d
+
+
 def sleep_regularity_simplified(df: pd.DataFrame) -> float | None:
     """Simplified Sleep Regularity Index from diary bed/wake times.
 
@@ -115,12 +205,17 @@ def build_sleep_dataframe(entries: list[dict]) -> pd.DataFrame:
                 wt_minutes = t.hour * 60 + t.minute
         except ValueError:
             pass
+        mid_sleep = np.nan
+        if pd.notna(bt_minutes) and pd.notna(wt_minutes) and m["valid"]:
+            dur = wt_minutes - bt_minutes if wt_minutes > bt_minutes else (wt_minutes + 1440.0 - bt_minutes)
+            mid_sleep = (bt_minutes + dur / 2.0) % 1440.0
         rows.append({
             "date": pd.to_datetime(e["entry_date"]),
             "bedtime": e.get("bedtime"),
             "wake_time": e.get("wake_time"),
             "bedtime_minutes": bt_minutes,
             "wake_minutes": wt_minutes,
+            "mid_sleep_minutes": mid_sleep,
             "sol_min": e.get("sleep_onset_latency_min"),
             "awakenings": e.get("awakenings_count"),
             "waso_min": e.get("waso_min"),
@@ -167,16 +262,20 @@ def merge_sleep_mood(sleep_df: pd.DataFrame, mood_daily: pd.DataFrame) -> pd.Dat
 def add_lagged_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Create lagged columns for exploratory temporal association.
 
-    - sleep_t -> mood_t+1  (does last night's sleep relate to next-day mood?)
-    - mood_t -> sleep_t+1  (does today's mood relate to the following night's sleep?)
+    - sleep_t -> mood_t+1  (does last night's sleep relate to next-day mood/anxiety/energy?)
+    - mood_t -> sleep_t+1  (does today's mood/anxiety relate to the following night's sleep/WASO/SOL?)
     - concurrent same-day associations are also available for comparison.
     """
     if df.empty:
         return df
     d = df.sort_values("date").copy()
-    d["mood_next_day"] = d["mood_mean"].shift(-1)
-    d["sleep_quality_next_night"] = d["sleep_quality"].shift(-1)
-    d["tst_hours_next_night"] = d["tst_hours"].shift(-1)
+    d["mood_next_day"] = d["mood_mean"].shift(-1) if "mood_mean" in d else np.nan
+    d["anxiety_next_day"] = d["anxiety_mean"].shift(-1) if "anxiety_mean" in d else np.nan
+    d["energy_next_day"] = d["energy_mean"].shift(-1) if "energy_mean" in d else np.nan
+    d["sleep_quality_next_night"] = d["sleep_quality"].shift(-1) if "sleep_quality" in d else np.nan
+    d["tst_hours_next_night"] = d["tst_hours"].shift(-1) if "tst_hours" in d else np.nan
+    d["waso_next_night"] = d["waso_min"].shift(-1) if "waso_min" in d else np.nan
+    d["sol_next_night"] = d["sol_min"].shift(-1) if "sol_min" in d else np.nan
     return d
 
 
@@ -205,7 +304,7 @@ def spearman_pair(df: pd.DataFrame, x: str, y: str, min_pairs: int = config.MIN_
         return None
     sub = df[[x, y]].dropna()
     n = len(sub)
-    if n < min_pairs:
+    if n < min_pairs or sub[x].nunique() <= 1 or sub[y].nunique() <= 1:
         return {"rho": np.nan, "p": np.nan, "n": n, "sufficient": False, "ci": None}
     rho, p = stats.spearmanr(sub[x], sub[y])
     return {

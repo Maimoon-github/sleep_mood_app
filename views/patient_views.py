@@ -49,10 +49,11 @@ def _check_consent() -> bool:
 
 
 def dashboard():
-    st.subheader("My sleep and mood dashboard")
+    st.subheader("Interactive Longitudinal Sleep & Mood Assessment")
     if not _check_consent():
         return
 
+    # Assessment period selector
     col1, col2 = st.columns([1, 1])
     with col1:
         period = st.selectbox("Assessment period", ["Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days", "Last 365 days", "Custom"], index=2)
@@ -83,97 +84,239 @@ def dashboard():
     else:
         m3.metric("Mean TST", "—")
         m4.metric("Mean SE", "—")
-    m5.metric("Sleep regularity", f"{sri:.0f}" if sri is not None else "—")
+    m5.metric("Sleep regularity (SRI)", f"{sri:.0f} / 100" if sri is not None else "—")
 
     st.caption(
-        "Blue/purple = yours (patient-reported). TST, SE, and TIB are calculated from your diary "
-        "fields. Reference lines are population-level guides (AASM/SRS ≥ 7 h; SE ≥ 85%), not "
-        "individual targets."
+        "Blue/purple = yours (patient-reported). TST (Total Sleep Time), SE (Sleep Efficiency = TST/TIB), and TIB (Time in Bed) "
+        "are derived from your daily diary. Reference lines are population-level guides (AASM/SRS ≥ 7 h; SE ≥ 85%), not individual targets."
     )
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Timeline", "Sleep", "Mood", "Associations", "Observations"])
-    with tab1:
-        chart = viz.sleep_mood_timeline(df)
-        if chart:
-            st.altair_chart(chart, use_container_width=True)
+    tab_day, tab_week, tab_month, tab_year, tab_assoc, tab_obs = st.tabs([
+        "📅 Daily Assessment",
+        "📊 Weekly Assessment",
+        "🗓️ Monthly Assessment",
+        "📈 Yearly Assessment",
+        "🔗 Associations",
+        "📝 Evidence Observations",
+    ])
+
+    with tab_day:
+        st.markdown("### 24-Hour Day Level Assessment")
+        st.caption("Deep-dive into a specific 24-hour cycle: overnight sleep architecture, within-day mood fluctuations, and contextual observations.")
+        avail_dates = sorted(list(set(
+            [e["entry_date"] for e in sleep_entries] + [e["entry_date"] for e in mood_entries]
+        )), reverse=True)
+        if not avail_dates:
+            st.info("No sleep or mood entries recorded in this period.")
         else:
-            st.info("No sleep or mood data in this period.")
-    with tab2:
-        c1, c2 = st.columns(2)
-        with c1:
-            chart = viz.sleep_duration_chart(df)
-            if chart:
-                st.altair_chart(chart, use_container_width=True)
-        with c2:
-            chart = viz.sleep_efficiency_chart(df)
-            if chart:
-                st.altair_chart(chart, use_container_width=True)
-        chart = viz.sleep_timing_chart(df)
-        if chart:
-            st.altair_chart(chart, use_container_width=True)
-        if not sleep_df.empty:
-            st.markdown("**Recorded sleep entries**")
-            st.dataframe(
-                sleep_df[["date", "bedtime", "wake_time", "sol_min", "awakenings", "waso_min", "tst_hours", "sleep_efficiency_pct", "sleep_quality"]],
-                use_container_width=True, hide_index=True,
-            )
-    with tab3:
-        c1, c2 = st.columns(2)
-        with c1:
-            chart = viz.mood_trajectory(df, rolling_window=7)
-            if chart:
-                st.altair_chart(chart, use_container_width=True)
-        with c2:
-            chart = viz.mood_distribution(df)
-            if chart:
-                st.altair_chart(chart, use_container_width=True)
-        chart = viz.calendar_heatmap(df, "mood_mean", "Daily mood calendar heatmap")
-        if chart:
-            st.altair_chart(chart, use_container_width=True)
-    with tab4:
-        st.markdown(
-            "Correlations are **exploratory** and based on the data available. "
-            "A correlation does not establish causation or a treatment target."
+            selected_date_str = st.selectbox("Select day to inspect", avail_dates, index=0)
+            sel_d = date.fromisoformat(selected_date_str)
+
+            # Sleep details for that date
+            s_match = [e for e in sleep_entries if e["entry_date"] == selected_date_str]
+            m_match = [e for e in mood_entries if e["entry_date"] == selected_date_str]
+
+            st.markdown(f"#### Sleep Architecture: Night of {sel_d.strftime('%A, %B %d, %Y')}")
+            if s_match:
+                s = s_match[0]
+                sm = metrics.compute_sleep_metrics(selected_date_str, s.get("bedtime"), s.get("wake_time"), s.get("sleep_onset_latency_min"), s.get("waso_min"))
+                sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+                sc1.metric("Bedtime → Wake", f"{s.get('bedtime', '—')} → {s.get('wake_time', '—')}")
+                sc2.metric("Time in Bed (TIB)", f"{sm['tib_min'] / 60.0:.1f} h" if sm['valid'] else "—")
+                sc3.metric("Total Sleep (TST)", f"{sm['tst_min'] / 60.0:.1f} h" if sm['valid'] else "—")
+                sc4.metric("Sleep Efficiency", f"{sm['sleep_efficiency_pct']:.0f}%" if sm['valid'] else "—")
+                sc5.metric("Sleep Quality", f"{s.get('sleep_quality_1_5', '—')} / 5")
+
+                sc_sub1, sc_sub2, sc_sub3 = st.columns(3)
+                sc_sub1.info(f"**Sleep Onset Latency (SOL):** {s.get('sleep_onset_latency_min', 0):.0f} min")
+                sc_sub2.info(f"**Awakenings Count:** {s.get('awakenings_count', 0)}")
+                sc_sub3.info(f"**Wake After Sleep Onset (WASO):** {s.get('waso_min', 0):.0f} min")
+                if s.get("notes"):
+                    st.markdown(f"**Sleep Notes:** *{s['notes']}*")
+            else:
+                st.info(f"No sleep diary entry recorded for {selected_date_str}.")
+
+            st.markdown("---")
+            st.markdown(f"#### Daytime Momentary Affect & Circumplex: {sel_d.strftime('%A, %B %d')}")
+            if m_match:
+                mc1, mc2 = st.columns([1, 1])
+                with mc1:
+                    chart_intra = viz.intraday_mood_chart(m_match)
+                    if chart_intra:
+                        st.altair_chart(chart_intra, use_container_width=True)
+                with mc2:
+                    chart_circ = viz.circumplex_affect_chart(m_match)
+                    if chart_circ:
+                        st.altair_chart(chart_circ, use_container_width=True)
+
+                st.markdown("**Logged Momentary Check-ins**")
+                m_table = pd.DataFrame(m_match)[["entry_timestamp", "mood_score_1_10", "anxiety_1_10", "energy_1_10", "dominant_emotion", "notes"]]
+                st.dataframe(m_table, hide_index=True, use_container_width=True)
+            else:
+                st.info(f"No mood check-ins logged on {selected_date_str}.")
+
+    with tab_week:
+        st.markdown("### Weekly Cyclical Assessment")
+        st.caption("Day-of-week patterns, weekday vs. weekend sleep shifts (social jetlag), and weekly sleep debt accumulation.")
+
+        wc1, wc2 = st.columns(2)
+        with wc1:
+            dow_chart = viz.day_of_week_chart(df)
+            if dow_chart:
+                st.altair_chart(dow_chart, use_container_width=True)
+            else:
+                st.info("Insufficient data for day-of-week breakdown.")
+        with wc2:
+            comp_chart = viz.weekday_vs_weekend_comparison_chart(df)
+            if comp_chart:
+                st.altair_chart(comp_chart, use_container_width=True)
+            else:
+                st.info("Need both weekday and weekend entries for comparison.")
+
+        st.markdown("#### Circadian Alignment & Sleep Debt")
+        sj = metrics.compute_social_jetlag(df)
+        sjc1, sjc2, sjc3 = st.columns(3)
+        if sj["sufficient_data"]:
+            sjc1.metric("Workday Mid-Sleep", sj["workday_midsleep_hhmm"])
+            sjc2.metric("Weekend Mid-Sleep", sj["freeday_midsleep_hhmm"])
+            sjc3.metric("Social Jetlag (|MSF - MSW|)", f"{sj['social_jetlag_hours']:.1f} h", delta="Notable shift" if sj["flagged"] else "Normal", delta_color="inverse")
+        else:
+            sjc1.metric("Workday Mid-Sleep", "—")
+            sjc2.metric("Weekend Mid-Sleep", "—")
+            sjc3.metric("Social Jetlag", "Need ≥ 4 nights")
+
+        debt_chart = viz.sleep_debt_chart(df)
+        if debt_chart:
+            st.altair_chart(debt_chart, use_container_width=True)
+
+    with tab_month:
+        st.markdown("### Monthly Macro Assessment (30-Day Dynamics)")
+        st.caption("Synchronized timelines, calendar heatmaps, mood distribution, and bedtime/waketime drift.")
+
+        timeline = viz.sleep_mood_timeline(df)
+        if timeline:
+            st.altair_chart(timeline, use_container_width=True)
+        else:
+            st.info("No sleep or mood data available.")
+
+        mc1, mc2 = st.columns(2)
+        with mc1:
+            cal_mood = viz.calendar_heatmap(df, "mood_mean", "Daily Mood Calendar Heatmap")
+            if cal_mood:
+                st.altair_chart(cal_mood, use_container_width=True)
+        with mc2:
+            cal_sleep = viz.calendar_heatmap(df, "tst_hours", "Daily Sleep Duration (TST) Calendar Heatmap")
+            if cal_sleep:
+                st.altair_chart(cal_sleep, use_container_width=True)
+
+        mc3, mc4 = st.columns(2)
+        with mc3:
+            dist_chart = viz.mood_distribution(df)
+            if dist_chart:
+                st.altair_chart(dist_chart, use_container_width=True)
+        with mc4:
+            timing_chart = viz.sleep_timing_chart(df)
+            if timing_chart:
+                st.altair_chart(timing_chart, use_container_width=True)
+
+    with tab_year:
+        st.markdown("### Yearly & Longitudinal Assessment")
+        st.caption("12-month overview of seasonal patterns, monthly aggregates, long-term sleep regularity, and questionnaire trends.")
+
+        ann_chart = viz.annual_monthly_trajectory(df)
+        if ann_chart:
+            st.altair_chart(ann_chart, use_container_width=True)
+        else:
+            st.info("Annual macro trajectory requires entries across at least two distinct calendar months.")
+
+        st.markdown("#### Longitudinal Questionnaire Progressions")
+        q_cols = st.columns(3)
+        for i, q_name in enumerate(["PHQ-9", "GAD-7", "ISI"]):
+            with q_cols[i]:
+                qdf = pd.DataFrame(database.get_questionnaires(_patient_id(), q_name, viewer_role="patient"))
+                if not qdf.empty:
+                    st.markdown(f"**{q_name} Trajectory**")
+                    q_chart = viz.questionnaire_trajectory(qdf, q_name)
+                    if q_chart:
+                        st.altair_chart(q_chart, use_container_width=True)
+                else:
+                    st.info(f"No {q_name} records.")
+
+    with tab_assoc:
+        st.markdown("### Exploratory Sleep–Mood Associations")
+        st.caption(
+            "Correlations describe observed associations across paired observations; they do not establish causation "
+            "or direct treatment targets. All values require at least 7 complete pairs."
         )
-        chart = viz.correlation_heatmap(df)
-        if chart:
-            st.altair_chart(chart, use_container_width=True)
+        heat = viz.correlation_heatmap(df)
+        if heat:
+            st.altair_chart(heat, use_container_width=True)
         else:
-            st.info(f"At least {config.MIN_PAIRS_FOR_CORRELATION} paired observations are needed for a correlation matrix.")
-        st.markdown("**Association details**")
+            st.info(f"At least {config.MIN_PAIRS_FOR_CORRELATION} paired observations are required for a correlation matrix.")
+
+        st.markdown("#### Cross-Lagged Directional Scatter Plots")
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            sc1 = viz.cross_lagged_scatter(
+                df, "tst_hours", "mood_next_day",
+                "Sleep Duration Tonight vs. Next-Day Mood",
+                "Sleep Tonight (TST hours)", "Next-Day Mood (/10)",
+            )
+            if sc1:
+                st.altair_chart(sc1, use_container_width=True)
+            else:
+                st.info("Insufficient paired data for sleep → next-day mood.")
+        with ac2:
+            sc2 = viz.cross_lagged_scatter(
+                df, "mood_mean", "sleep_quality_next_night",
+                "Today's Mood vs. Tonight's Sleep Quality",
+                "Today's Mood (/10)", "Tonight's Sleep Quality (/5)",
+            )
+            if sc2:
+                st.altair_chart(sc2, use_container_width=True)
+            else:
+                st.info("Insufficient paired data for mood → night sleep quality.")
+
+        st.markdown("#### Statistical Summaries with 95% Confidence Intervals")
         for line in analytics.association_summary(df):
             st.markdown(line)
-    with tab5:
+
+    with tab_obs:
+        st.markdown("### Evidence-Based Observations & Flagged Clinical Days")
+        st.caption("Synthesized observations of patient-reported data and calculated metrics. Strictly non-diagnostic.")
         for line in analytics.all_observations(df, start, end):
             if line:
                 st.markdown(line)
 
 
 def sleep_entry():
-    st.subheader("Log last night's sleep")
+    st.subheader("Log Sleep (Consensus Sleep Diary)")
     if not _check_consent():
         return
     st.caption(
-        "Record one entry per night, ideally in the morning. Estimates are acceptable; "
-        "do not watch the clock during the night."
+        "Standardized morning self-monitoring based on the Consensus Sleep Diary (Carney et al., 2012). "
+        "Best logged upon awakening. Estimates are acceptable; do not watch the clock during the night."
     )
     with st.form("sleep_form"):
         entry_date = st.date_input("Night date (the date you went to bed)", value=date.today() - timedelta(days=1))
         c1, c2 = st.columns(2)
         with c1:
-            bedtime = st.time_input("Bedtime", value=datetime.strptime("23:00", "%H:%M").time())
-            sol = st.number_input("Minutes to fall asleep (SOL)", min_value=0.0, max_value=600.0, value=20.0, step=5.0)
-            awakenings = st.number_input("Number of awakenings", min_value=0, max_value=20, value=1, step=1)
+            bedtime = st.time_input("Bedtime (lights out / attempted sleep)", value=datetime.strptime("23:00", "%H:%M").time())
+            sol = st.number_input("Minutes to fall asleep (Sleep Onset Latency - SOL)", min_value=0.0, max_value=600.0, value=20.0, step=5.0)
+            awakenings = st.number_input("Number of awakenings during night", min_value=0, max_value=20, value=1, step=1)
         with c2:
-            wake_time = st.time_input("Final wake time", value=datetime.strptime("07:00", "%H:%M").time())
+            wake_time = st.time_input("Final wake-up time", value=datetime.strptime("07:00", "%H:%M").time())
             waso = st.number_input("Minutes awake after falling asleep (WASO)", min_value=0.0, max_value=600.0, value=15.0, step=5.0)
             quality = st.slider("Sleep quality (1 = very poor, 5 = very good)", 1, 5, 3)
-        notes = st.text_area("Notes (optional)", placeholder="e.g., late caffeine, stressful evening, early meeting")
+        context_selected = st.multiselect("Relevant night context factors (optional)", config.CONTEXT_TAG_CHOICES)
+        notes = st.text_area("Notes (optional)", placeholder="e.g., late caffeine, stressful evening, early meeting, noise, ambient temperature")
         submitted = st.form_submit_button("Save sleep entry")
         if submitted:
+            tags_str = ", ".join(context_selected) if context_selected else ""
+            comb_notes = f"[Tags: {tags_str}] {notes}".strip() if tags_str else (notes or None)
             database.upsert_sleep_entry(
                 _patient_id(), entry_date.isoformat(), bedtime.strftime("%H:%M"), wake_time.strftime("%H:%M"),
-                sol, awakenings, waso, quality, notes or None,
+                sol, awakenings, waso, quality, comb_notes,
             )
             st.success("Sleep entry saved. You can update it by submitting the same night date again.")
             st.rerun()
@@ -182,7 +325,7 @@ def sleep_entry():
     entries = database.get_sleep_entries(_patient_id())
     if entries:
         df = metrics.build_sleep_dataframe(entries[-14:])
-        st.dataframe(df[["date", "bedtime", "wake_time", "tst_hours", "sleep_efficiency_pct", "sleep_quality"]], hide_index=True, use_container_width=True)
+        st.dataframe(df[["date", "bedtime", "wake_time", "tst_hours", "sleep_efficiency_pct", "sleep_quality", "notes"]], hide_index=True, use_container_width=True)
         st.markdown("**Delete an entry**")
         with st.form("sleep_delete_form"):
             dates = [e["entry_date"] for e in entries]
@@ -200,24 +343,38 @@ def sleep_entry():
 
 
 def mood_entry():
-    st.subheader("Log a mood observation")
+    st.subheader("Log Momentary Affect & Mood Check-In")
     if not _check_consent():
         return
-    st.caption("You may log more than once per day. Each entry is timestamped and treated as a separate observation.")
+    st.caption("Ecological Momentary Assessment (EMA). Multiple check-ins per day capture real-time affective dynamics without recall bias.")
     with st.form("mood_form"):
         c1, c2 = st.columns(2)
         with c1:
             entry_date = st.date_input("Date", value=date.today())
             entry_time = st.time_input("Time", value=datetime.now().time())
+            dominant_emotion = st.selectbox(
+                "Primary Emotion / State",
+                ["Calm", "Content", "Happy", "Energetic", "Anxious", "Sad", "Irritable", "Exhausted", "Numb"],
+            )
         with c2:
-            mood = st.slider("Mood (1 = very low, 10 = very good)", 1, 10, 5)
-            anxiety = st.slider("Anxiety (1 = none, 10 = extreme)", 1, 10, 5)
-            energy = st.slider("Energy (1 = exhausted, 10 = energetic)", 1, 10, 5)
-        notes = st.text_area("Notes / context (optional)", placeholder="e.g., argument, good news, physical activity")
-        submitted = st.form_submit_button("Save mood entry")
+            mood = st.slider("Valence / Pleasure (1 = very unpleasant/low, 10 = very pleasant/happy)", 1, 10, 5)
+            anxiety = st.slider("Tension / Anxiety (1 = completely calm, 10 = extreme panic/tension)", 1, 10, 5)
+            energy = st.slider("Arousal / Energy (1 = exhausted/deactivated, 10 = energetic/activated)", 1, 10, 5)
+
+        tags_selected = st.multiselect("Contextual triggers / factors (optional)", config.CONTEXT_TAG_CHOICES)
+        notes = st.text_area("Notes / context (optional)", placeholder="e.g., meeting presentation, argument, physical activity, meditation")
+        submitted = st.form_submit_button("Save mood check-in")
         if submitted:
             ts = datetime.combine(entry_date, entry_time).isoformat()
-            database.add_mood_entry(_patient_id(), ts, entry_date.isoformat(), mood, anxiety, energy, notes or None)
+            tags_str = ", ".join(tags_selected) if tags_selected else None
+            database.add_mood_entry(
+                _patient_id(), ts, entry_date.isoformat(),
+                mood, anxiety, energy, notes or None,
+                dominant_emotion=dominant_emotion,
+                context_tags=tags_str,
+            )
+            st.success("Mood check-in recorded.")
+            st.rerun()
             st.success("Mood entry saved.")
             st.rerun()
     st.markdown("---")

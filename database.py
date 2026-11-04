@@ -120,8 +120,29 @@ def init_db() -> None:
                 action TEXT NOT NULL,
                 timestamp TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS clinical_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                clinician_id INTEGER NOT NULL,
+                patient_id INTEGER NOT NULL,
+                session_date TEXT NOT NULL,
+                note_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(clinician_id) REFERENCES users(id),
+                FOREIGN KEY(patient_id) REFERENCES users(id)
+            );
             """
         )
+        # Migrate schema safely if columns do not exist
+        for col_def in [
+            ("mood_entries", "dominant_emotion", "TEXT"),
+            ("mood_entries", "context_tags", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]}")
+            except sqlite3.OperationalError:
+                pass
 
 
 # ---------- Users and profiles ----------
@@ -270,16 +291,18 @@ def add_mood_entry(
     anxiety: int | None,
     energy: int | None,
     notes: str | None,
+    dominant_emotion: str | None = None,
+    context_tags: str | None = None,
 ) -> None:
     with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO mood_entries
               (patient_id, entry_timestamp, entry_date, mood_score_1_10,
-               anxiety_1_10, energy_1_10, notes, created_at)
-            VALUES (?,?,?,?,?,?,?,?)
+               anxiety_1_10, energy_1_10, notes, dominant_emotion, context_tags, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
             """,
-            (patient_id, entry_timestamp, entry_date, mood, anxiety, energy, notes, now_iso()),
+            (patient_id, entry_timestamp, entry_date, mood, anxiety, energy, notes, dominant_emotion, context_tags, now_iso()),
         )
 
 
@@ -406,6 +429,50 @@ def get_access_log(patient_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ---------- Clinical Notes ----------
+
+def add_clinical_note(
+    clinician_id: int,
+    patient_id: int,
+    session_date: str,
+    note_type: str,
+    content: str,
+) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO clinical_notes
+              (clinician_id, patient_id, session_date, note_type, content, created_at)
+            VALUES (?,?,?,?,?,?)
+            """,
+            (clinician_id, patient_id, session_date, note_type, content.strip(), now_iso()),
+        )
+        return cur.lastrowid
+
+
+def get_clinical_notes(patient_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.*, u.username as clinician_username
+            FROM clinical_notes c
+            JOIN users u ON u.id = c.clinician_id
+            WHERE c.patient_id = ?
+            ORDER BY c.session_date DESC, c.created_at DESC
+            """,
+            (patient_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_clinical_note(note_id: int, clinician_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM clinical_notes WHERE id = ? AND clinician_id = ?",
+            (note_id, clinician_id),
+        )
+
+
 # ---------- Export and deletion ----------
 
 def export_all_patient_data(patient_id: int) -> dict[str, list[dict]]:
@@ -424,6 +491,7 @@ def export_all_patient_data(patient_id: int) -> dict[str, list[dict]]:
             "mood_entries": _all("mood_entries", "entry_timestamp"),
             "observations": _all("observations", "obs_date"),
             "questionnaires": _all("questionnaires", "administered_at"),
+            "clinical_notes": _all("clinical_notes", "session_date"),
         }
     for q in data["questionnaires"]:
         raw = q.pop("responses_json")
@@ -453,8 +521,220 @@ def delete_mood_entry(patient_id: int, entry_id: int) -> None:
 def delete_account_and_data(patient_id: int) -> None:
     """Remove all of a patient's records, profile row, and user row."""
     with get_conn() as conn:
-        for table in ("sleep_entries", "mood_entries", "observations", "questionnaires", "access_log"):
+        for table in ("sleep_entries", "mood_entries", "observations", "questionnaires", "access_log", "clinical_notes"):
             conn.execute(f"DELETE FROM {table} WHERE patient_id = ?", (patient_id,))
         conn.execute("DELETE FROM access_log WHERE user_id = ?", (patient_id,))
         conn.execute("DELETE FROM patient_profiles WHERE user_id = ?", (patient_id,))
         conn.execute("DELETE FROM users WHERE id = ?", (patient_id,))
+
+
+# ---------- Synthetic Clinical Demonstration Cohort ----------
+
+def seed_demo_patients(clinician_id: int) -> list[str]:
+    """Populate 4 realistic clinical phenotype demonstration patients.
+
+    Generates longitudinal sleep, mood, questionnaire, and observation data
+    for evidence-based clinical exploration (Day, Week, Month, Year).
+    """
+    import math
+    from datetime import date, timedelta
+    import auth
+
+    created = []
+    today = date.today()
+    demo_pw = auth.hash_password("demo1234")
+
+    # Cohort specifications
+    cohort = [
+        {
+            "username": "alex_circadian",
+            "name": "Alex Morgan (Circadian Delay & Social Jetlag)",
+            "type": "delayed_phase",
+        },
+        {
+            "username": "sarah_insomnia",
+            "name": "Sarah Jenkins (Chronic Insomnia & Anxiety)",
+            "type": "insomnia",
+        },
+        {
+            "username": "david_cyclical",
+            "name": "David Chen (Cyclical Affective Instability)",
+            "type": "cyclical",
+        },
+        {
+            "username": "elena_baseline",
+            "name": "Elena Rostova (Stable Sleep Baseline)",
+            "type": "baseline",
+        },
+    ]
+
+    for p_spec in cohort:
+        uname = p_spec["username"]
+        existing = find_patient_by_username(uname)
+        if existing:
+            p_id = existing["user_id"]
+        else:
+            p_id = create_user(uname, demo_pw, "patient")
+            created.append(p_spec["name"])
+
+        # Update profile and link to clinician
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE patient_profiles SET display_name = ?, clinician_id = ?, consent_given = 1, consent_at = ? WHERE user_id = ?",
+                (p_spec["name"], clinician_id, now_iso(), p_id),
+            )
+
+        # Generate 90 days of rich longitudinal data
+        ptype = p_spec["type"]
+        for days_ago in range(89, -1, -1):
+            cur_date = today - timedelta(days=days_ago)
+            d_str = cur_date.isoformat()
+            is_weekend = cur_date.weekday() in (4, 5) # Fri/Sat nights
+
+            if ptype == "delayed_phase":
+                # Weekdays: late bed (01:30), early wake (07:30) -> short sleep
+                # Weekends: late bed (03:15), late wake (11:30) -> oversleep
+                if is_weekend:
+                    bed = "03:15"
+                    wake = "11:30"
+                    sol = 20.0
+                    waso = 15.0
+                    awakenings = 1
+                    quality = 4
+                    sleep_notes = "Weekend sleep-in to catch up"
+                    mood = 7.5
+                    anxiety = 3.5
+                    energy = 7.0
+                    emotion = "Relaxed"
+                    tags = "Social engagement, Late heavy meal"
+                else:
+                    bed = "01:30"
+                    wake = "07:30"
+                    sol = 25.0
+                    waso = 20.0
+                    awakenings = 1
+                    quality = 2 if cur_date.weekday() in (0, 1) else 3
+                    sleep_notes = "Workday alarm; felt groggy"
+                    # Monday/Tuesday mood dips
+                    mood = 4.2 if cur_date.weekday() == 0 else 5.2 if cur_date.weekday() == 1 else 6.2
+                    anxiety = 6.5 if cur_date.weekday() in (0, 1) else 4.5
+                    energy = 3.5 if cur_date.weekday() in (0, 1) else 5.0
+                    emotion = "Exhausted" if cur_date.weekday() == 0 else "Focused"
+                    tags = "Caffeine (<6h bed), Screen in bed"
+
+            elif ptype == "insomnia":
+                # High SOL, high WASO, low efficiency, high anxiety
+                var_f = math.sin(days_ago / 4.0) * 15.0
+                sol = max(30.0, 50.0 + var_f)
+                waso = max(25.0, 55.0 + var_f * 0.8)
+                bed = "23:15"
+                wake = "06:45"
+                awakenings = 3
+                quality = 1 if sol + waso > 100 else 2
+                sleep_notes = "Tossing and turning, racing thoughts"
+                mood = max(2.5, min(6.5, 4.5 - (sol + waso - 80) / 40.0))
+                anxiety = max(4.0, min(9.5, 7.5 + (sol + waso - 80) / 30.0))
+                energy = max(2.0, min(5.5, 3.8 - waso / 40.0))
+                emotion = "Anxious" if anxiety > 7.0 else "Exhausted"
+                tags = "High work stress, Screen in bed" if days_ago % 3 == 0 else "Caffeine (<6h bed)"
+
+            elif ptype == "cyclical":
+                # 30-day cyclical mood/sleep wave
+                phase = math.sin(days_ago / 6.0)
+                if phase > 0.4:
+                    # Hypomanic / activation phase: short sleep, high energy
+                    bed = "02:30"
+                    wake = "06:45"
+                    sol = 10.0
+                    waso = 10.0
+                    awakenings = 0
+                    quality = 4
+                    sleep_notes = "Felt wired, didn't need much sleep"
+                    mood = 8.5
+                    anxiety = 4.0
+                    energy = 9.2
+                    emotion = "Euphoric"
+                    tags = "Late heavy meal, Vigorous exercise"
+                elif phase < -0.4:
+                    # Depressive phase: hypersomnia/long sleep, low energy, low mood
+                    bed = "22:00"
+                    wake = "08:45"
+                    sol = 40.0
+                    waso = 45.0
+                    awakenings = 2
+                    quality = 2
+                    sleep_notes = "Slept long but woke unrefreshed"
+                    mood = 3.2
+                    anxiety = 6.8
+                    energy = 2.2
+                    emotion = "Sad"
+                    tags = "Illness / physical pain"
+                else:
+                    # Euthymic / transition
+                    bed = "23:45"
+                    wake = "07:30"
+                    sol = 20.0
+                    waso = 20.0
+                    awakenings = 1
+                    quality = 3
+                    sleep_notes = "Normal night"
+                    mood = 6.0
+                    anxiety = 4.5
+                    energy = 5.8
+                    emotion = "Calm"
+                    tags = "Meditation / relaxation"
+
+            else:  # baseline healthy
+                bed = "23:15"
+                wake = "07:15"
+                sol = 12.0 + (days_ago % 5)
+                waso = 10.0
+                awakenings = 1
+                quality = 4
+                sleep_notes = "Good restful sleep"
+                mood = 7.5 + (days_ago % 4) * 0.3
+                anxiety = 2.5
+                energy = 7.2
+                emotion = "Content"
+                tags = "Vigorous exercise" if days_ago % 2 == 0 else "Meditation / relaxation"
+
+            upsert_sleep_entry(p_id, d_str, bed, wake, sol, awakenings, waso, quality, sleep_notes)
+
+            # Mood check-in (timestamped morning + optional afternoon check-in)
+            add_mood_entry(p_id, f"{d_str}T09:15:00", d_str, int(round(mood)), int(round(anxiety)), int(round(energy)), "Morning self-check", emotion, tags)
+            if days_ago % 2 == 0:
+                eve_mood = max(1, min(10, int(round(mood + (1 if is_weekend else -1)))))
+                add_mood_entry(p_id, f"{d_str}T19:30:00", d_str, eve_mood, int(round(anxiety)), int(round(energy)), "Evening check-in", emotion, tags)
+
+            # Observations every 7-10 days
+            if days_ago % 10 == 0:
+                add_observation(p_id, d_str, f"Context check for {cur_date.strftime('%B %d')}: {tags}", tags)
+
+        # Questionnaires at 30-day intervals
+        for offset, admin_d in [(60, today - timedelta(days=60)), (30, today - timedelta(days=30)), (0, today)]:
+            dt_iso = admin_d.isoformat() + "T10:00:00"
+            if ptype == "delayed_phase":
+                save_questionnaire(p_id, "ISI", dt_iso, {0: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 1, 6: 1}, 9.0, "Subthreshold insomnia", visible_to_clinician=True)
+                save_questionnaire(p_id, "GAD-7", dt_iso, {0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0}, 6.0, "Mild", visible_to_clinician=True)
+            elif ptype == "insomnia":
+                save_questionnaire(p_id, "ISI", dt_iso, {0: 3, 1: 3, 2: 3, 3: 3, 4: 3, 5: 2, 6: 2}, 19.0, "Moderate clinical insomnia", visible_to_clinician=True)
+                save_questionnaire(p_id, "GAD-7", dt_iso, {0: 2, 1: 2, 2: 2, 3: 2, 4: 2, 5: 2, 6: 1}, 13.0, "Moderate", visible_to_clinician=True)
+                save_questionnaire(p_id, "PHQ-9", dt_iso, {0: 1, 1: 1, 2: 2, 3: 2, 4: 1, 5: 1, 6: 1, 7: 0, 8: 0}, 9.0, "Mild", visible_to_clinician=True)
+            elif ptype == "cyclical":
+                save_questionnaire(p_id, "MDQ", dt_iso, {0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 0, 10: 1, 11: 1, "cooc": 1, "problem": "Serious problem"}, 10.0, "Screen positive", visible_to_clinician=True)
+                depr_score = 15.0 if offset == 30 else 5.0
+                depr_band = "Moderately severe" if offset == 30 else "Mild"
+                save_questionnaire(p_id, "PHQ-9", dt_iso, {i: (2 if offset == 30 else 0) for i in range(9)}, depr_score, depr_band, visible_to_clinician=True)
+            else:
+                save_questionnaire(p_id, "ISI", dt_iso, {i: 0 for i in range(7)}, 0.0, "No clinically significant insomnia", visible_to_clinician=True)
+                save_questionnaire(p_id, "PHQ-9", dt_iso, {i: 0 for i in range(9)}, 0.0, "Minimal", visible_to_clinician=True)
+
+        # Seed an initial clinician consultation note
+        add_clinical_note(
+            clinician_id, p_id, (today - timedelta(days=14)).isoformat(),
+            "Clinical Formulation",
+            f"Baseline assessment note for {p_spec['name']}. Reviewing longitudinal self-monitoring diary. "
+            "Discussing sleep scheduling, stimulus control, and correlation with daytime affect.",
+        )
+
+    return created

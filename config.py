@@ -8,8 +8,8 @@ never applied to an individual as a diagnostic rule.
 import os
 
 APP_NAME = "Sleep & Mood Longitudinal Assessment"
-APP_VERSION = "0.2.0 (research prototype)"
-DB_PATH = os.getenv("SMA_DB_PATH", "sleep_mood.db")
+APP_VERSION = "0.3.0 (evidence-based research prototype)"
+DB_PATH = os.getenv("SMA_DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sleep_mood.db"))
 
 # ---------------------------------------------------------------------------
 # Sleep reference values
@@ -18,12 +18,18 @@ DB_PATH = os.getenv("SMA_DB_PATH", "sleep_mood.db")
 # per night on a regular basis. This is a population recommendation, not a
 # per-person prescription.
 SLEEP_DURATION_REFERENCE_HOURS = 7.0
+SLEEP_DEBT_BASELINE_HOURS = 7.5
 # Consensus sleep diary literature commonly contrasts sleep efficiency >= 85%
 # with lower values; sleep efficiency is TST / time in bed.
 SLEEP_EFFICIENCY_REFERENCE_PCT = 85.0
 # Sleep-onset latency above ~30 min is conventionally considered prolonged in
 # the diary literature (see Carney et al., 2012 and standard CBT-I practice).
 SOL_REFERENCE_MIN = 30.0
+# WASO above ~30-45 min is clinically notable in adult sleep assessment.
+WASO_REFERENCE_MIN = 30.0
+# Social jetlag (difference between weekend and weekday mid-sleep time) >= 1.5 h
+# is associated with metabolic and affective vulnerability (Roenneberg et al., 2012).
+SOCIAL_JETLAG_FLAG_HOURS = 1.5
 
 # ---------------------------------------------------------------------------
 # Flags used to surface "days worth reviewing" in the diary.
@@ -39,6 +45,21 @@ FLAG_MOOD_VERY_LOW = 3.0        # on the 1..10 patient-reported daily mood scale
 FLAG_MOOD_DROP = 3.0            # day-over-day decrease of >= 3 points
 FLAG_ANXIETY_VERY_HIGH = 8.0    # on the 1..10 patient-reported anxiety scale
 FLAG_ENERGY_VERY_LOW = 2.0      # on the 1..10 patient-reported energy scale
+
+# Context tags for standardized clinical logging
+CONTEXT_TAG_CHOICES = [
+    "Caffeine (<6h bed)",
+    "Alcohol (<4h bed)",
+    "Vigorous exercise",
+    "Late heavy meal",
+    "Screen in bed",
+    "Prescribed medication",
+    "High work stress",
+    "Social engagement",
+    "Illness / physical pain",
+    "Travel / jet lag",
+    "Meditation / relaxation",
+]
 
 # ---------------------------------------------------------------------------
 # Statistics
@@ -81,7 +102,7 @@ MDQ_MIN_SYMPTOMS = 7
 PHQ9_ITEM9_INDEX = 8
 
 # ---------------------------------------------------------------------------
-# Safety
+# Safety and Clinical Governance
 # ---------------------------------------------------------------------------
 CRISIS_RESOURCES = (
     "If you are in crisis or need to talk with someone right now: contact your "
@@ -96,4 +117,11 @@ SAFETY_DISCLAIMER = (
     "This application is a research prototype. It records and organises "
     "self-reported information; it does not detect emergencies, provide "
     "diagnoses, or replace care from a qualified clinician."
+)
+
+CLINICAL_DECISION_SUPPORT_NOTICE = (
+    "CLINICAL DECISION SUPPORT NOTICE: All visualizations, metrics, and flagged patterns represent descriptive "
+    "observations and statistical associations of self-reported data. They are not automated diagnoses, clinical "
+    "predictions, or prescriptive treatment directives. Diagnostic formulation and risk assessment remain the "
+    "sole clinical responsibility of the licensed practitioner."
 )

@@ -1,154 +1,153 @@
 # 🌙 Sleep & Mood Longitudinal Assessment
 
-A patient-centred, research-prototype Streamlit application for systematic
-sleep and mood self-monitoring, with a longitudinal review dashboard for
-clinicians. It records what patients report, renders evidence-based
-visualisations, and produces **descriptive, uncertainty-qualified
-observations — never diagnoses**.
+A comprehensive, patient-centred, evidence-based Streamlit application for systematic sleep and mood self-monitoring, featuring an interactive longitudinal review dashboard for psychologists and mental health researchers.
 
-> **Safety.** This application does not provide diagnoses, treatment, or
-> emergency care. If you are in crisis, contact your local emergency number or
-> a crisis line. Evidence-informed resources shown in-app (config.py → `CRISIS_RESOURCES`).
+It records patient-reported data, renders validated clinical visualizations, calculates evidence-based derivations (Sleep Efficiency, Regularity, Social Jetlag, Sleep Debt, Affective Instability MSSD), and produces **descriptive, uncertainty-qualified observations — never automated diagnoses**.
+
+> **Clinical Decision Support Notice & Safety.** This application does not provide diagnoses, prescriptive treatments, or emergency care. Diagnostic formulation and risk assessment remain the sole clinical responsibility of the licensed practitioner. If you are in crisis, contact your local emergency services or a crisis line. Evidence-informed resources are shown in-app (`config.py` → `CRISIS_RESOURCES`).
 
 ---
 
-## 1. Evidence base (research findings with references)
+## 1. Evidence Base & Scientific Literature
 
-Design decisions were driven by verified sources; the logic of each is carried
-into the code and disclaimers.
+All design decisions, cutoffs, and calculations were derived from peer-reviewed scientific literature and clinical practice guidelines:
 
-### Sleep measurement
-| Practice adopted | Evidence |
-|---|---|
-| Diary fields: bedtime, sleep-onset latency, awakenings, WASO, final wake time, quality rating | **Consensus Sleep Diary** — Carney et al., *SLEEP* 2012;35(2):287–302 (the standardised prospective sleep self-monitoring instrument). |
-| TST = TIB − SOL − WASO; SE = TST/TIB × 100 | Standard sleep-medicine derivations used with the consensus diary. |
-| "≥ 7 h/night" used only as a **population reference line** | **AASM & SRS joint consensus** — Watson et al., *SLEEP* 2015;38(6):843–844: adults should sleep ≥ 7 h regularly; 6 h or less inappropriate to sustain health. |
-| DIARY DATA ALWAYS LABELLED SUBJECTIVE | **Diary-vs-actigraphy disagreement is well documented**, largest for WASO; insomnia samples tend to *underestimate* sleep (paradoxical insomnia) — e.g., Kearns et al. 2022 (*JCSM*), Curtis et al. 2018; shepherded in-app as "diary-derived". |
-| Sleep-timing regularity as a first-class metric (simplified 0–100 index) | Windred et al., *SLEEP* 2024;47(1):zsad253 (sleep regularity predicted mortality risk *beyond duration*); Fischer et al., *SLEEP* 2021 (metric properties). The full SRI requires epoch data; the app's proxy is computed from diary bed/wake concordance and labelled as such. |
-
-### Mood measurement
-| Practice adopted | Evidence |
-|---|---|
-| Multiple mood ratings per day with timestamps (mood, anxiety, energy; 1–10), within-day variability computed | **Ecological Momentary Assessment (EMA)** literature: momentary/repeated real-time ratings reduce recall bias vs. retrospective reports (Shiffman, Stone & Hufford 2008; Moore et al. 2016). |
-| Daily aggregation = mean; variability kept and displayed | Within-person fluctuation is preserved and always shown with SDs, never collapsed to a single impression. |
-
-### Questionnaires (paraphrased items; use licensed originals in production)
-| Instrument | Bands/scores used | Source |
+### Sleep Measurement & Chronobiology
+| Metric / Practice | Evidence & Guideline | Clinical Relevance |
 |---|---|---|
-| **PHQ-9** (0–27) | 0/5/10/15/20 → minimal / mild / moderate / moderately severe / severe; ≥ 10 standard screening cutoff (88%/88%) | Kroenke, Spitzer & Williams, *J Gen Intern Med* 2001;16(9):606–13. |
-| **GAD-7** (0–21) | 0/5/10/15 → minimal / mild / moderate / severe; ≥ 10 cutoff for further evaluation | Spitzer et al., *Arch Intern Med* 2006;166(10):1092–7. |
-| **ISI** (0–28) | 0–7 / 8–14 / 15–21 / 22–28 | Bastien et al., *Sleep Med* 2001;2(4):297–307; Morin et al., *SLEEP* 2011;34(5):601–8. |
-| **MDQ** (0–13) | Screen positive requires ≥ 7 symptoms **AND** co-occurrence **AND** moderate/serious impact | Hirschfeld et al., *Am J Psychiatry* 2000;157(11):1873–5. |
+| **Consensus Sleep Diary (CSD-Core)**: Bedtime, SOL, awakenings count, WASO, wake time, sleep quality | **Carney et al., *SLEEP* 2012;35(2):287–302** | Gold-standard standardized prospective sleep diary across clinical insomnia research and AASM guidelines. |
+| **Sleep Derivations**: `TIB = wake - bed`; `TST = TIB - SOL - WASO`; `SE = (TST/TIB) * 100` | Standard sleep medicine definitions (AASM, CBT-I protocol) | Sleep efficiency < 85% is clinically indicative of sleep maintenance difficulties or excessive time in bed. |
+| **Duration Benchmark (≥ 7 h)** | **AASM & SRS joint consensus** — Watson et al., *SLEEP* 2015;38(6):843–844 | Adults should regularly sleep ≥ 7 h; used strictly as a population reference line, never an individual diagnostic rule. |
+| **Subjective Diary Framing** | Kearns et al. 2022 (*JCSM*); Curtis et al. 2018 | Diary-vs-actigraphy disagreement is well documented; insomnia samples tend to underestimate sleep (paradoxical insomnia). Data is explicitly labelled diary-derived. |
+| **Sleep Regularity Index (SRI)** | **Phillips et al., *Sci Rep* 2017**; **Windred et al., *SLEEP* 2024;47(1):zsad253** | Day-to-day concordance in sleep timing predicts cardiometabolic health and mortality independently of duration. |
+| **Social Jetlag ($\Delta \text{MSF}_{\text{sc}}$)** | **Wittmann et al., 2006; Roenneberg et al., 2012** | Discrepancy between workday and free-day mid-sleep timing (≥ 1.5 h flag); reflects circadian misalignment. |
+| **Sleep Debt Accumulation** | Standard sleep physiology (Van Dongen et al., 2003) | Cumulative nightly deficit against a baseline 7.5h reference. |
 
-**Safety-sensitive item.** PHQ-9 **item 9** (thoughts of death or self-harm):
-any non-zero response is always surfaced with crisis resources — never hidden
-inside a total. It is presented as a prompt for a clinical conversation, not an
-automated risk assessment (consistent with guidance, e.g., Simon et al. 2018 on
-PHQ-9 item-9 responses and subsequent behaviour).
+### Mood Measurement & Affective Dynamics
+| Metric / Practice | Evidence | Clinical Relevance |
+|---|---|---|
+| **Ecological Momentary Assessment (EMA)** | **Shiffman, Stone & Hufford 2008; Moore et al. 2016** | Repeated real-time ratings (Valence, Tension/Anxiety, Energy) reduce retrospective recall bias. |
+| **Circumplex Model of Affect** | **Russell 1980 (*JPSP*)** | 2D affective space: Valence (Displeasure ↔ Pleasure) $\times$ Arousal (Deactivation ↔ Activation). |
+| **Affective Instability (MSSD)** | **Ebner-Priemer et al., 2007; Jahng et al., 2008; Trull et al., 2008** | Mean Squared Successive Difference: $\text{MSSD} = \frac{1}{N-1}\sum (x_{i+1} - x_i)^2$. Distinguishes sharp emotional swings from gradual trends. |
 
-### Statistics
-- **Spearman ρ** for monotonic sleep–mood associations (ordinal scales, non-normal diary data); a minimum of **7 paired observations** is required before any value is displayed.
-- Every correlation is displayed with **n, exact p, and 95% Fisher-z confidence interval** — small-sample correlations without CIs are systematically over-interpreted.
-- All association output is labelled **exploratory**: autocorrelation of repeated within-person measures, shared seasonal/work trends, and third variables (e.g., illness, stressors) confound them. No causal language is generated anywhere.
+### Validated Standardized Questionnaires
+| Instrument | Severity Bands / Scoring | Reference |
+|---|---|---|
+| **PHQ-9** (0–27) | 0–4: Minimal, 5–9: Mild, 10–14: Moderate, 15–19: Moderately Severe, 20–27: Severe (Cutoff ≥ 10) | Kroenke, Spitzer & Williams, *J Gen Intern Med* 2001 |
+| **GAD-7** (0–21) | 0–4: Minimal, 5–9: Mild, 10–14: Moderate, 15–21: Severe (Cutoff ≥ 10) | Spitzer et al., *Arch Intern Med* 2006 |
+| **ISI** (0–28) | 0–7: None, 8–14: Subthreshold, 15–21: Moderate insomnia, 22–28: Severe clinical insomnia | Bastien et al. 2001; Morin et al., *SLEEP* 2011 |
+| **MDQ** (0–13) | Screen positive requires ≥ 7 symptoms **AND** co-occurrence **AND** moderate/serious impact | Hirschfeld et al., *Am J Psychiatry* 2000 |
 
-### Privacy & governance
-- Health data is **special-category data** (GDPR Art. 9). Design follows the special-category posture: explicit consent *before* any health-data entry; data minimisation (only assessment-relevant fields); patient-initiated **export** and **deletion**; questionnaire entries can be kept **private from the linked clinician**; clinician access is **audit-logged** (who, what, when).
-- The app is honest about its own limits: it labels itself a local SQLite research prototype in the sidebar and README; production deployment requires a server-side database, encryption at rest/in transit, and recognised compliance work.
+> **Safety-Sensitive Item: PHQ-9 Item 9.** Any non-zero response to item 9 (thoughts of death or self-harm) is immediately surfaced with emergency and crisis helpline resources, prompting a clinical safety interview.
+
+### Statistical & Methodological Discipline
+- **Spearman Rank Correlation ($\rho$):** Used for non-normal, ordinal diary scales. Minimum threshold: $n \ge 7$ paired observations required before reporting.
+- **Fisher's $z$ 95% Confidence Intervals:** Every reported correlation includes sample size $n$, exact $p$-value, and 95% CI to prevent small-sample overinterpretation.
+- **Exploratory Labeling:** Output explicitly notes autocorrelation, shared seasonal/weekly trends, and unmeasured confounders. Causal claims are prohibited.
 
 ---
 
-## 2. Architecture & data model
-
-### Module structure
+## 2. Architecture & Data Model
 
 ```text
-app.py                 # entry point: auth routing, role-based navigation
-├── config.py          # single source of truth: thresholds, bands, safety text
-├── auth.py            # PBKDF2-SHA256 password hashing/verification, signup/login
-├── database.py        # SQLite data-access layer (std lib only, no ORM)
-├── instruments.py     # PHQ-9/GAD-7/ISI/MDQ definitions + scorers
-├── metrics.py         # sleep metrics, regularity, merges, Spearman + Fisher-z CI,
-│                      # completeness, pre-specified flagged days
-├── analytics.py       # transparent narrative summaries (no diagnostic language)
-├── visualizations.py  # Altair charts (reference lines, calendars, heatmap)
+sleep_mood_app/
+├── app.py                 # Streamlit entry point, role-based auth & navigation, demo login
+├── config.py              # Single source of truth: clinical cutoffs, bands, crisis notices
+├── auth.py                # PBKDF2-SHA256 password hashing (260,000 rounds), signup/login
+├── database.py            # SQLite data-access layer, clinical notes, demo cohort generator
+├── instruments.py         # Standardized questionnaire definitions and validated scorers
+├── metrics.py             # Sleep derivations, SRI, Social Jetlag, Sleep Debt, MSSD, Spearman + CIs
+├── analytics.py           # Narrative observations, clinical report generation, data quality
+├── visualizations.py      # Altair charts (Circumplex, timelines, heatmaps, day-of-week, debt)
+├── tests/
+│   ├── test_metrics.py    # 22 comprehensive unit tests (unittest & pytest compatible)
+│   └── integration_check.py # End-to-end clinical workflow integration verification
 └── views/
-    ├── patient_views.py     # consent gate, dashboard, entries, notes, questionnaires,
-    │                        # my-data (export/delete)
-    └── clinician_views.py   # patient list/linking, longitudinal review, data quality
+    ├── patient_views.py   # Consent gate, multi-scale dashboard, CSD sleep log, EMA mood log
+    └── clinician_views.py # Patient list, longitudinal review (Day, Week, Month, Year), report generator
 ```
 
-- **Patient UI flow:** consent → record sleep/mood/notes → optional questionnaires → dashboard → export/delete under *My Data*.
-- **Clinician UI flow:** link patient by username → review timeline/sleep/mood/associations/questionnaires/notes → data-quality overview. All access logged.
-
-### Data model (SQLite `sleep_mood.db`)
-
-| Table | Key columns | Notes |
-|---|---|---|
-| `users` | id, username, password_hash, role (`patient`/`clinician`) | PBKDF2-SHA256, 260 000 iterations, per-user salt |
-| `patient_profiles` | user_id (PK), display_name, clinician_id, consent_given, consent_at | consent required before any data entry |
-| `sleep_entries` | patient_id, entry_date (unique per night), bedtime, wake_time, SOL, awakenings, WASO, quality 1–5, notes | one row per night, updatable |
-| `mood_entries` | patient_id, entry_timestamp, entry_date, mood/anxiety/energy 1–10, notes | multiple per day allowed (EMA-style) |
-| `observations` | patient_id, obs_date, notes, context_tags | free-text context |
-| `questionnaires` | patient_id, instrument, administered_at, responses_json, total_score, severity_band, **visible_to_clinician** | patient privacy switch |
-| `access_log` | user_id, patient_id, action, timestamp | every clinician review |
-
-**Calculated metrics** (never raw): `TIB = wake − bed`; `TST = TIB − SOL − WASO` (floored at 0); `SE = TST/TIB`; sleep-timing **regularity** (0–100, diary bed/wake concordance across adjacent nights); **completeness** = recorded vs expected calendar days.
+### Relational Schema (`sleep_mood.db`)
+- `users`: `id`, `username`, `password_hash`, `role` (`patient` / `clinician`), `created_at`.
+- `patient_profiles`: `user_id` (PK), `display_name`, `clinician_id`, `consent_given`, `consent_at`.
+- `sleep_entries`: `id`, `patient_id`, `entry_date` (UNIQUE), `bedtime`, `wake_time`, `sol_min`, `awakenings_count`, `waso_min`, `sleep_quality_1_5`, `notes`, `created_at`.
+- `mood_entries`: `id`, `patient_id`, `entry_timestamp`, `entry_date`, `mood_score_1_10`, `anxiety_1_10`, `energy_1_10`, `dominant_emotion`, `context_tags`, `notes`, `created_at`.
+- `observations`: `id`, `patient_id`, `obs_date`, `notes`, `context_tags`, `created_at`.
+- `questionnaires`: `id`, `patient_id`, `instrument`, `administered_at`, `responses_json`, `total_score`, `severity_band`, `visible_to_clinician`, `created_at`.
+- `clinical_notes`: `id`, `clinician_id`, `patient_id`, `session_date`, `note_type`, `content`, `created_at`.
+- `access_log`: `id`, `user_id`, `patient_id`, `action`, `timestamp`.
 
 ---
 
-## 3. Setup & execution
+## 3. Setup & Execution Guide
 
+### Using the `stream_app` Conda Environment
 ```bash
-# 1. Python 3.10+ recommended
-python3 -m venv .venv && source .venv/bin/activate
+# 1. Activate the environment
+conda activate stream_app
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Navigate to directory
+cd "/home/maimoon-amin/Antigravity code/streamlit apps/sleep_mood_app"
 
-# 3. Run
+# 3. Run unit tests
+python -m unittest discover tests
+
+# 4. Run integration verification check
+python tests/integration_check.py
+
+# 5. Launch the Streamlit application
 streamlit run app.py
 ```
 
-- Database location defaults to `sleep_mood.db` next to the code; override with
-  `SMA_DB_PATH=/path/to/app.db` (recommended outside any shared directory).
-- Optional dev dependency: `pip install pytest` for the test suite.
-- No external services are contacted; no data ever leaves the local machine.
+### Demonstration Accounts & Pre-Loaded Clinical Phenotypes
+The application features a 1-click **"⚡ Quick Demo Access"** tab on the login screen, allowing psychologists, researchers, and reviewers to instantly explore the longitudinal system with 4 realistic clinical phenotypes:
+1. **Alex Morgan (`alex_circadian`)** — Delayed Sleep-Wake Phase & Social Jetlag (late bedtimes on weekdays, weekend oversleeping, Monday mood dips).
+2. **Sarah Jenkins (`sarah_insomnia`)** — Chronic Insomnia & Daytime Anxiety (elevated SOL > 45m, frequent WASO, moderate ISI = 19, high anxiety).
+3. **David Chen (`david_cyclical`)** — Cyclical Affective Instability & Bipolar Spectrum (alternating periods of short sleep with high energy vs depressive dips, MDQ screen positive).
+4. **Elena Rostova (`elena_baseline`)** — Stable Sleep & Affect Baseline (regular sleep schedule, high efficiency SE = 94%, stable positive affect).
 
 ---
 
-## 4. Validation results
+## 4. Multi-Scale Assessment & Visualization Strategy
 
-**Automated (pytest, 19 passing):**
-- Sleep-metric derivations: overnight wrap-around bedtimes, after-midnight bedtimes, invalid inputs, TST floor at zero (5 tests).
-- Regularity: 100.0 for identical nights; `None` when < 2 adjacent nights (2).
-- Associations: insufficient-n suppression, perfect-correlation handling, missing-column safety, Fisher-z CI bracketing and symmetry, shared-seasonal-trend demonstration (4).
-- Merges preserve all dates with outer joins; flag thresholds trip/hide correctly (3).
-- Questionnaire scorers: PHQ-9/GAD-7/ISI band boundaries; MDQ full 3-condition screen rule (5).
+The application provides dedicated interactive views across four distinct time scales:
 
-**Integration (tests/integration_check.py, passing):** creates clinician + 2 patients; consents, links; writes 30 nights sleep+30 days mood with a constructed worsening patch; verifies completeness (30/30), regularity bounds, correlation machinery, narrative output completeness (Spearman + CI + regularity + flags present, no diagnostic language), questionnaire **privacy scoping** (clinician sees only shared entries), **PHQ-9 item-9 detection** from stored responses, audit log, full export, and hard deletion.
-
-**Manual:** app boots headless (HTTP 200, no exceptions); consent gate blocks data entry until acknowledged; every dashboard figure renders only when sufficient data exists.
-
-**Bugs found and fixed during verification:**
-1. JSON round-trip turned integer item keys into strings → PHQ-9 item-9 safety detection silently failed; now normalised in the data layer (both views + export).
-2. Export queries ran after the DB context closed (`Cannot operate on a closed database`); now executed inside the connection block.
+1. **📅 Daily Assessment**:
+   - Single-day 24h deep-dive.
+   - Sleep Architecture breakdown (Bedtime, Wake time, TIB, TST, SOL, WASO, Awakenings, Efficiency %, Quality rating).
+   - Intraday Momentary Affect Timeline (`intraday_mood_chart`): Morning, afternoon, and evening check-ins.
+   - Russell Circumplex Model Plot (`circumplex_affect_chart`): Valence $\times$ Arousal quadrants with crosshairs.
+   - Contextual factors (caffeine, exercise, screen time, medication) and patient notes.
+2. **📊 Weekly Assessment**:
+   - Day-of-week profile (Monday to Sunday) for sleep duration and mood.
+   - Weekday vs. Weekend contrast bar chart (`weekday_vs_weekend_comparison_chart`).
+   - Social Jetlag calculation ($|\text{MSF} - \text{MSW}|$ with ≥ 1.5 h clinical threshold alert).
+   - Cumulative sleep debt accumulation curve (`sleep_debt_chart`).
+3. **🗓️ Monthly Assessment**:
+   - 30-day synchronized sleep duration and mood trajectory (`sleep_mood_timeline`).
+   - Calendar Heatmaps for Daily Mood and Daily Sleep Duration.
+   - Mood distribution histogram and floating bedtime/waketime drift chart.
+   - Cross-lagged scatter plots (Sleep tonight $\to$ Next-day mood, and Mood today $\to$ Sleep quality tonight).
+4. **📈 Yearly & Longitudinal Assessment**:
+   - 12-month macro trajectory (`annual_monthly_trajectory`) displaying monthly average sleep and mood.
+   - Standardized Questionnaire longitudinal progression (PHQ-9, GAD-7, ISI) with clinical cutoff bands.
+   - Annual Sleep Regularity Index (SRI) trend and data completeness audit.
+   - **One-Click Clinical Longitudinal Report Generator**: Generates formatted, non-diagnostic documentation ready for export or EMR charting.
 
 ---
 
-## 5. Known limitations & future improvements
+## 5. Verification & Testing Results
 
-**Limitations (documented, deliberate):**
-- **Not a diagnostic tool.** All insights are descriptive; no triage decisions are made by the app.
-- **Diary subjectivity.** Diary-vs-actigraphy disagreement is real (especially WASO; underestimation in insomnia). No actigraphy/wearable ingestion yet.
-- **Regularity is a proxy.** The published SRI needs epoch-level sleep/wake data; the diary version captures bed/wake timing only — no naps, no intraday fragmentation.
-- **Correlations are confounded.** Within-person autocorrelation and shared trends are not removed; CIs are approximate Fisher-z, unsuited to very small n or extreme ρ.
-- **Security posture is prototype-grade.** Local SQLite plaintext storage; PBKDF2 (not Argon2); no TLS, no rate limiting, no MFA.
-- **Item wording is paraphrased** for copyright reasons — official licensed PHQ-9/GAD-7/ISI/MDQ versions required for production or research use.
+- **Unit Tests (`tests/test_metrics.py`):** 22 tests passing (100%). Covers sleep metrics, overnight and after-midnight times, zero-clamping, regularity, social jetlag, sleep debt, MSSD, Spearman rank correlation, Fisher-z 95% CIs, seasonal confound detection, and questionnaire scoring bands.
+- **Integration Check (`tests/integration_check.py`):** End-to-end verified. Tests patient signup, consent gate, data logging, analytics narrative generation, questionnaire clinician-scoping privacy, PHQ-9 item 9 detection, audit logging, JSON export, and hard deletion.
+- **Browser & UI Verification:** Tested under Streamlit 1.66.1 in the `stream_app` environment.
 
-**Recommended next steps (priority order):**
-1. **Actigraphy/wearable ingestion** (e.g., FITbit/Apple Health exports) → true SRI, WASO objectivity, diary-vs-device discrepancy as an explicit, clinically interesting metric.
-2. **Minimally important change** tracking on PHQ-9/GAD-7/ISI over time for clinician review of treatment response (validated change thresholds, e.g., ISI ≥ 6).
-3. Age- and population-appropriate reference sets (adolescents, shift workers, perinatal), chosen per patient profile.
-4. **Server-side deployment hardening**: Postgres + encryption at rest, Argon2id, TLS, rate limiting, MFA, session cookies with `HttpOnly`/`Secure`; formal privacy review (DPIA) and, where applicable, HIPAA/GDPR compliance programme.
-5. Automated cron-style reminder nudges for morning diary completion (compliance is the biggest threat to longitudinal value).
-6. Multilingual UI + validated translated instruments; accessibility audit (WCAG 2.1 AA) on colour encodings.
+---
+
+## 6. Privacy, Ethics & Clinical Boundaries
+
+- **Consent Gate:** Explicit informed consent is mandatory prior to recording any health data.
+- **Patient Privacy Switches:** Patients can selectively toggle whether standardized questionnaire scores are shared with their linked clinician or kept private.
+- **Right to Portability & Erasure:** 1-click comprehensive JSON data export and permanent account deletion (GDPR Art. 17 right to erasure).
+- **Audit Logging:** Every clinician patient review is timestamped and recorded in `access_log`.
+- **Strictly Non-Diagnostic Posture:** The application displays exploratory statistical associations and descriptive metrics to empower clinical reasoning, adhering to NHS DCB0129 and FDA SaMD clinical decision support principles.

@@ -165,6 +165,35 @@ def association_summary(df: pd.DataFrame) -> list[str]:
     return out
 
 
+def social_jetlag_summary(df: pd.DataFrame) -> list[str]:
+    """Report mid-sleep difference between workdays and weekends."""
+    from metrics import compute_social_jetlag
+    sj = compute_social_jetlag(df)
+    if not sj["sufficient_data"]:
+        return ["Social jetlag analysis needs at least 2 workday and 1 weekend recorded sleep nights."]
+    flag_txt = " (trips ≥ 1.5 h clinical review threshold; indicates potential circadian misalignment)" if sj["flagged"] else " (within normal 1.5 h variation)"
+    return [
+        f"Workday mean mid-sleep: {sj['workday_midsleep_hhmm']}; Weekend mean mid-sleep: {sj['freeday_midsleep_hhmm']}.",
+        f"Social Jetlag (|MSF - MSW|): {sj['social_jetlag_hours']:.1f} h{flag_txt}. "
+        "Significant social jetlag is commonly associated with Monday morning fatigue and mood vulnerability.",
+    ]
+
+
+def affective_instability_summary(df: pd.DataFrame) -> list[str]:
+    """Report Mean Squared Successive Difference (MSSD) for daily mood."""
+    from metrics import compute_affective_instability_mssd
+    if df.empty or "mood_mean" not in df:
+        return ["Affective instability analysis needs daily mood ratings."]
+    mssd = compute_affective_instability_mssd(df["mood_mean"])
+    if mssd is None:
+        return ["At least 3 valid mood days are required to calculate the Mean Squared Successive Difference (MSSD)."]
+    desc = "elevated day-to-day emotional volatility" if mssd >= 4.0 else "moderate day-to-day mood variability" if mssd >= 2.0 else "relatively stable day-to-day mood"
+    return [
+        f"Affective Instability Index (MSSD): {mssd:.2f} ({desc}). "
+        "MSSD quantifies sequential day-to-day mood swings independent of gradual baseline trends (Ebner-Priemer et al., 2007).",
+    ]
+
+
 def flagged_days_report(df: pd.DataFrame) -> list[str]:
     """List diary days that trip pre-specified review cutpoints."""
     from metrics import daily_flags
@@ -208,11 +237,13 @@ def all_observations(df: pd.DataFrame, start: date, end: date) -> list[str]:
     lines.append("**Patient-reported sleep data and calculated sleep metrics**")
     lines.extend(sleep_summary(df))
     lines.append("")
-    lines.append("**Sleep-timing regularity**")
+    lines.append("**Sleep-timing regularity & circadian stability**")
     lines.extend(regularity_summary(df))
+    lines.extend(social_jetlag_summary(df))
     lines.append("")
-    lines.append("**Patient-reported mood data**")
+    lines.append("**Patient-reported mood data & affective dynamics**")
     lines.extend(mood_summary(df))
+    lines.extend(affective_instability_summary(df))
     lines.append("")
     lines.append("**Exploratory sleep–mood associations**")
     lines.extend(association_summary(df))
@@ -223,3 +254,90 @@ def all_observations(df: pd.DataFrame, start: date, end: date) -> list[str]:
     lines.append("**Data completeness and missingness**")
     lines.extend(data_quality_summary(df, start, end))
     return lines
+
+
+def generate_clinical_report_markdown(
+    patient_name: str,
+    df: pd.DataFrame,
+    questionnaires: list[dict],
+    clinical_notes: list[dict],
+    start: date,
+    end: date,
+) -> str:
+    """Generate a formatted clinical progress and assessment summary.
+
+    Strictly non-diagnostic: formats patient-reported data, objective derivations,
+    and clinical psychologist consultation notes for medical records / documentation.
+    """
+    c = completeness(df, start, end)
+    sri = sleep_regularity_simplified(df)
+
+    sleep_sec = "\n".join(f"- {s}" for s in sleep_summary(df))
+    mood_sec = "\n".join(f"- {s}" for s in mood_summary(df))
+    assoc_sec = "\n".join(f"- {s}" for s in association_summary(df))
+    flag_sec = "\n".join(f"- {s}" for s in flagged_days_report(df))
+
+    # Questionnaires breakdown
+    q_lines = []
+    if questionnaires:
+        for q in questionnaires:
+            q_lines.append(f"- **{q['instrument']}** ({q['administered_at'][:10]}): Score {q['total_score']:.0f} — *{q['severity_band']}*")
+    else:
+        q_lines.append("- No shared standardized questionnaires in this period.")
+    q_sec = "\n".join(q_lines)
+
+    # Clinician notes breakdown
+    n_lines = []
+    if clinical_notes:
+        for n in clinical_notes:
+            n_lines.append(f"### {n['session_date']} — {n['note_type']}\n{n['content']}\n")
+    else:
+        n_lines.append("No clinician consultation notes entered.")
+    n_sec = "\n".join(n_lines)
+
+    report = f"""# Clinical Longitudinal Sleep & Mood Assessment Report
+
+**Patient:** {patient_name}  
+**Assessment Horizon:** {start.isoformat()} to {end.isoformat()} ({c['expected_days']} days)  
+**Data Completeness:** Sleep: {c['sleep_nights']} / {c['expected_days']} nights ({c['sleep_completeness_pct']}%) | Mood: {c['mood_days']} / {c['expected_days']} days ({c['mood_completeness_pct']}%)  
+**Sleep Regularity Index (SRI):** {f'{sri:.0f} / 100' if sri is not None else 'Insufficient pairs'}  
+
+---
+
+## 1. Clinical Decision Support Notice
+> {config.CLINICAL_DECISION_SUPPORT_NOTICE}
+
+---
+
+## 2. Sleep Architecture & Diary Metrics (Patient-Reported & Derived)
+{sleep_sec}
+
+---
+
+## 3. Affective Dynamics & Mood Tracking
+{mood_sec}
+
+---
+
+## 4. Standardized Questionnaire Scores
+{q_sec}
+
+---
+
+## 5. Exploratory Cross-Lagged Sleep–Mood Associations
+{assoc_sec}
+
+---
+
+## 6. Days Tripping Clinical Review Cutpoints
+{flag_sec}
+
+---
+
+## 7. Clinical Formulation & Psychologist Consultation Notes
+{n_sec}
+
+---
+*Report generated via {config.APP_NAME} v{config.APP_VERSION}. All associations are exploratory.*
+"""
+    return report

@@ -34,7 +34,7 @@ def login_page():
         "A research-prototype application for systematic sleep and mood self-monitoring. "
         "It does not provide diagnoses or emergency care. If you are in crisis, contact local emergency services."
     )
-    tab_login, tab_signup = st.tabs(["Log in", "Create account"])
+    tab_login, tab_signup, tab_demo = st.tabs(["Log in", "Create account", "⚡ Quick Demo Access"])
     with tab_login:
         with st.form("login_form"):
             username = st.text_input("Username")
@@ -60,6 +60,21 @@ def login_page():
                     st.success(msg)
                 else:
                     st.error(msg)
+    with tab_demo:
+        st.markdown("**Instant Evaluator / Clinician Demonstration Mode**")
+        st.caption(
+            "Quickly evaluate the longitudinal assessment dashboard with pre-populated "
+            "clinical phenotypes (Circadian delay, Chronic insomnia, Bipolar spectrum, and Healthy baseline)."
+        )
+        if st.button("🚀 Enter as Demo Psychologist (Pre-loaded Cohort)", type="primary"):
+            demo_user = database.get_user_by_username("dr_clarke")
+            if not demo_user:
+                auth.signup("dr_clarke", "clinicaldemo123", "clinician")
+                demo_user = database.get_user_by_username("dr_clarke")
+            database.seed_demo_patients(demo_user["id"])
+            st.session_state.user = demo_user
+            st.session_state.page = "Patient List"
+            st.rerun()
     with st.expander("If you are in crisis"):
         st.info(config.CRISIS_RESOURCES)
 
