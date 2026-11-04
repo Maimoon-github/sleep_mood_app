@@ -249,14 +249,52 @@ def build_mood_daily_dataframe(entries: list[dict]) -> pd.DataFrame:
     return out.sort_values("date").reset_index(drop=True)
 
 
+STANDARD_SLEEP_COLS = {
+    "bedtime": None,
+    "wake_time": None,
+    "bedtime_minutes": np.nan,
+    "wake_minutes": np.nan,
+    "mid_sleep_minutes": np.nan,
+    "sol_min": np.nan,
+    "awakenings": np.nan,
+    "waso_min": np.nan,
+    "sleep_quality": np.nan,
+    "notes": None,
+    "tib_min": np.nan,
+    "tst_min": np.nan,
+    "tst_hours": np.nan,
+    "sleep_efficiency_pct": np.nan,
+    "valid_sleep": False,
+}
+
+STANDARD_MOOD_COLS = {
+    "mood_mean": np.nan,
+    "mood_sd": np.nan,
+    "mood_n": 0,
+    "anxiety_mean": np.nan,
+    "energy_mean": np.nan,
+}
+
+
 def merge_sleep_mood(sleep_df: pd.DataFrame, mood_daily: pd.DataFrame) -> pd.DataFrame:
     if sleep_df.empty and mood_daily.empty:
         return pd.DataFrame()
     if sleep_df.empty:
-        return mood_daily.copy()
-    if mood_daily.empty:
-        return sleep_df.copy()
-    return pd.merge(sleep_df, mood_daily, on="date", how="outer").sort_values("date").reset_index(drop=True)
+        df = mood_daily.copy()
+    elif mood_daily.empty:
+        df = sleep_df.copy()
+    else:
+        df = pd.merge(sleep_df, mood_daily, on="date", how="outer")
+
+    # Guarantee standard schema so downstream analytics and charts never raise KeyError
+    for col, default_val in STANDARD_SLEEP_COLS.items():
+        if col not in df.columns:
+            df[col] = default_val
+    for col, default_val in STANDARD_MOOD_COLS.items():
+        if col not in df.columns:
+            df[col] = default_val
+
+    return df.sort_values("date").reset_index(drop=True)
 
 
 def add_lagged_columns(df: pd.DataFrame) -> pd.DataFrame:

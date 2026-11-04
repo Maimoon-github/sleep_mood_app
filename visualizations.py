@@ -16,41 +16,69 @@ def _base() -> alt.Chart:
     return alt.Chart()
 
 
-def sleep_mood_timeline(df: pd.DataFrame) -> alt.LayerChart | None:
-    if df.empty:
+def sleep_mood_timeline(df: pd.DataFrame) -> alt.Chart | alt.LayerChart | None:
+    if df is None or df.empty or "date" not in df.columns:
         return None
-    d = df.copy()
+    d = df.dropna(subset=["date"]).copy()
     d["date"] = pd.to_datetime(d["date"])
-    sleep_line = (
-        alt.Chart(d)
-        .mark_line(point=True, color="#1f77b4", strokeWidth=2)
-        .encode(
-            x=alt.X("date:T", title="Date"),
-            y=alt.Y("tst_hours:Q", title="Total sleep time (hours)", scale=alt.Scale(zero=False)),
-            tooltip=[
-                alt.Tooltip("date:T", title="Date"),
-                alt.Tooltip("tst_hours:Q", title="TST (h)", format=".1f"),
-                alt.Tooltip("sleep_efficiency_pct:Q", title="SE (%)", format=".0f"),
-                alt.Tooltip("mood_mean:Q", title="Mood (/10)", format=".1f"),
-            ],
+
+    has_sleep = "tst_hours" in d.columns and d["tst_hours"].notna().any()
+    has_mood = "mood_mean" in d.columns and d["mood_mean"].notna().any()
+
+    if not has_sleep and not has_mood:
+        return None
+
+    layers = []
+    if has_sleep:
+        sleep_d = d.dropna(subset=["tst_hours"]).copy()
+        tooltip_items = [
+            alt.Tooltip("date:T", title="Date"),
+            alt.Tooltip("tst_hours:Q", title="TST (h)", format=".1f"),
+        ]
+        if "sleep_efficiency_pct" in sleep_d.columns:
+            tooltip_items.append(alt.Tooltip("sleep_efficiency_pct:Q", title="SE (%)", format=".0f"))
+        if "mood_mean" in sleep_d.columns:
+            tooltip_items.append(alt.Tooltip("mood_mean:Q", title="Mood (/10)", format=".1f"))
+
+        sleep_line = (
+            alt.Chart(sleep_d)
+            .mark_line(point=True, color="#1f77b4", strokeWidth=2)
+            .encode(
+                x=alt.X("date:T", title="Date"),
+                y=alt.Y("tst_hours:Q", title="Total sleep time (hours)", scale=alt.Scale(zero=False)),
+                tooltip=tooltip_items,
+            )
         )
-    )
-    mood_line = (
-        alt.Chart(d)
-        .mark_line(point=True, color="#d62728", strokeWidth=2)
-        .encode(
-            x="date:T",
-            y=alt.Y("mood_mean:Q", title="Daily mood (/10)", scale=alt.Scale(domain=[0, 10])),
+        ref = (
+            alt.Chart(pd.DataFrame({"y": [config.SLEEP_DURATION_REFERENCE_HOURS]}))
+            .mark_rule(strokeDash=[6, 4], color="#1f77b4", opacity=0.6)
+            .encode(y="y:Q")
         )
-    )
-    ref = (
-        alt.Chart(pd.DataFrame({"y": [config.SLEEP_DURATION_REFERENCE_HOURS]}))
-        .mark_rule(strokeDash=[6, 4], color="#1f77b4", opacity=0.6)
-        .encode(y="y:Q")
-    )
-    return alt.layer(sleep_line, mood_line + ref).resolve_scale(y="independent").properties(
-        height=340, title="Sleep duration and daily mood over time"
-    ).interactive()
+        layers.append(sleep_line + ref)
+
+    if has_mood:
+        mood_d = d.dropna(subset=["mood_mean"]).copy()
+        mood_line = (
+            alt.Chart(mood_d)
+            .mark_line(point=True, color="#d62728", strokeWidth=2)
+            .encode(
+                x="date:T",
+                y=alt.Y("mood_mean:Q", title="Daily mood (/10)", scale=alt.Scale(domain=[0, 10])),
+                tooltip=[
+                    alt.Tooltip("date:T", title="Date"),
+                    alt.Tooltip("mood_mean:Q", title="Mood (/10)", format=".1f"),
+                ],
+            )
+        )
+        layers.append(mood_line)
+
+    if len(layers) == 2:
+        return alt.layer(layers[0], layers[1]).resolve_scale(y="independent").properties(
+            height=340, title="Sleep duration and daily mood over time"
+        ).interactive()
+    elif len(layers) == 1:
+        return layers[0].properties(height=340, title="Sleep duration or mood over time").interactive()
+    return None
 
 
 def sleep_timing_chart(df: pd.DataFrame) -> alt.Chart | None:
@@ -404,14 +432,22 @@ def day_of_week_chart(df: pd.DataFrame) -> alt.Chart | None:
     if df is None or df.empty or "date" not in df.columns:
         return None
     d = df.dropna(subset=["date"]).copy()
+    if d.empty or "tst_hours" not in d.columns or d["tst_hours"].notna().sum() == 0:
+        return None
     d["weekday_name"] = d["date"].dt.day_name()
     order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-    g = d.groupby("weekday_name").agg(
-        mean_tst=("tst_hours", "mean"),
-        mean_mood=("mood_mean", "mean"),
-        count=("valid_sleep", "sum"),
-    ).reset_index()
+    agg_kwargs = {"mean_tst": ("tst_hours", "mean")}
+    if "mood_mean" in d.columns:
+        agg_kwargs["mean_mood"] = ("mood_mean", "mean")
+    if "valid_sleep" in d.columns:
+        agg_kwargs["count"] = ("valid_sleep", "sum")
+    else:
+        agg_kwargs["count"] = ("tst_hours", "count")
+
+    g = d.groupby("weekday_name").agg(**agg_kwargs).reset_index()
+    if "mean_mood" not in g.columns:
+        g["mean_mood"] = np.nan
 
     if g.empty or g["count"].sum() == 0:
         return None
@@ -548,12 +584,21 @@ def annual_monthly_trajectory(df: pd.DataFrame) -> alt.Chart | None:
     if df is None or df.empty or "date" not in df.columns:
         return None
     d = df.dropna(subset=["date"]).copy()
+    if d.empty or "tst_hours" not in d.columns or d["tst_hours"].notna().sum() == 0:
+        return None
     d["year_month"] = d["date"].dt.strftime("%Y-%m")
-    g = d.groupby("year_month").agg(
-        mean_tst=("tst_hours", "mean"),
-        mean_mood=("mood_mean", "mean"),
-        nights=("valid_sleep", "sum"),
-    ).reset_index()
+
+    agg_kwargs = {"mean_tst": ("tst_hours", "mean")}
+    if "mood_mean" in d.columns:
+        agg_kwargs["mean_mood"] = ("mood_mean", "mean")
+    if "valid_sleep" in d.columns:
+        agg_kwargs["nights"] = ("valid_sleep", "sum")
+    else:
+        agg_kwargs["nights"] = ("tst_hours", "count")
+
+    g = d.groupby("year_month").agg(**agg_kwargs).reset_index()
+    if "mean_mood" not in g.columns:
+        g["mean_mood"] = np.nan
 
     if len(g) < 2:
         return None
@@ -571,23 +616,28 @@ def annual_monthly_trajectory(df: pd.DataFrame) -> alt.Chart | None:
             ],
         )
     )
-    mood_line = (
-        alt.Chart(g)
-        .mark_line(point=True, color="#ed7d31", strokeWidth=2.5)
-        .encode(
-            x="year_month:N",
-            y=alt.Y("mean_mood:Q", title="Mean Mood (/10)", scale=alt.Scale(domain=[0, 10])),
-            tooltip=[
-                alt.Tooltip("year_month:N", title="Month"),
-                alt.Tooltip("mean_mood:Q", title="Mean Mood (/10)", format=".1f"),
-            ],
-        )
-    )
     ref = (
         alt.Chart(pd.DataFrame({"y": [config.SLEEP_DURATION_REFERENCE_HOURS]}))
         .mark_rule(strokeDash=[4, 4], color="#5b9bd5", opacity=0.6)
         .encode(y="y:Q")
     )
-    return (tst_bar + ref + mood_line).resolve_scale(y="independent").properties(
-        height=280, title="12-Month Macro Assessment: Monthly Sleep Duration & Mood Trajectories"
+
+    if "mean_mood" in g.columns and g["mean_mood"].notna().any():
+        mood_line = (
+            alt.Chart(g.dropna(subset=["mean_mood"]))
+            .mark_line(point=True, color="#ed7d31", strokeWidth=2.5)
+            .encode(
+                x="year_month:N",
+                y=alt.Y("mean_mood:Q", title="Mean Mood (/10)", scale=alt.Scale(domain=[0, 10])),
+                tooltip=[
+                    alt.Tooltip("year_month:N", title="Month"),
+                    alt.Tooltip("mean_mood:Q", title="Mean Mood (/10)", format=".1f"),
+                ],
+            )
+        )
+        return (tst_bar + ref + mood_line).resolve_scale(y="independent").properties(
+            height=280, title="12-Month Macro Assessment: Monthly Sleep Duration & Mood Trajectories"
+        )
+    return (tst_bar + ref).properties(
+        height=280, title="12-Month Macro Assessment: Monthly Sleep Duration"
     )
