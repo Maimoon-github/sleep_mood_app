@@ -36,6 +36,7 @@ from instruments import (
     score_isi,
     score_mdq,
 )
+import analytics
 
 
 class TestMetricsAndInstruments(unittest.TestCase):
@@ -190,6 +191,34 @@ class TestMetricsAndInstruments(unittest.TestCase):
         self.assertEqual(len(merged), 2)
         self.assertTrue(pd.isna(merged.loc[0, "mood_mean"]))
         self.assertTrue(pd.isna(merged.loc[1, "tst_hours"]))
+        # valid_sleep must be strictly boolean without NA/NaN values
+        self.assertFalse(merged["valid_sleep"].isna().any())
+        self.assertFalse(bool(merged.loc[1, "valid_sleep"]))
+        self.assertTrue(bool(merged.loc[0, "valid_sleep"]))
+
+    def test_analytics_with_disjoint_sleep_and_mood(self):
+        # Patient records mood on day 2 and sleep on day 1
+        sleep_df = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-01"]),
+            "tst_hours": [7.0],
+            "sleep_efficiency_pct": [88.0],
+            "sol_min": [15.0],
+            "valid_sleep": [True]
+        })
+        mood_df = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-02"]),
+            "mood_mean": [6.5],
+            "anxiety_mean": [3.0]
+        })
+        merged = merge_sleep_mood(sleep_df, mood_df)
+        # Should not raise ValueError: Cannot mask with non-boolean array containing NA / NaN values
+        obs = analytics.all_observations(merged, date(2025, 1, 1), date(2025, 1, 2))
+        self.assertIsInstance(obs, list)
+        self.assertTrue(len(obs) > 0)
+        s_summary = analytics.sleep_summary(merged)
+        self.assertTrue(any("Across 1 recorded night" in s for s in s_summary))
+        m_summary = analytics.mood_summary(merged)
+        self.assertTrue(any("Across 1 day(s) with mood data" in m for m in m_summary))
 
     def test_daily_flags_trips_low_tst(self):
         df = pd.DataFrame({

@@ -442,6 +442,8 @@ def day_of_week_chart(df: pd.DataFrame) -> alt.Chart | None:
     d = df.dropna(subset=["date"]).copy()
     if d.empty or "tst_hours" not in d.columns or d["tst_hours"].notna().sum() == 0:
         return None
+    if "valid_sleep" in d.columns:
+        d["valid_sleep"] = d["valid_sleep"].fillna(False).astype(bool)
     d["weekday_name"] = d["date"].dt.day_name()
     order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -594,6 +596,8 @@ def annual_monthly_trajectory(df: pd.DataFrame) -> alt.Chart | None:
     d = df.dropna(subset=["date"]).copy()
     if d.empty or "tst_hours" not in d.columns or d["tst_hours"].notna().sum() == 0:
         return None
+    if "valid_sleep" in d.columns:
+        d["valid_sleep"] = d["valid_sleep"].fillna(False).astype(bool)
     d["year_month"] = d["date"].dt.strftime("%Y-%m")
 
     agg_kwargs = {"mean_tst": ("tst_hours", "mean")}

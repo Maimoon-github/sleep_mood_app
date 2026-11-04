@@ -82,9 +82,10 @@ def patient_list():
                 if has_item9_flag:
                     st.error("⚠️ PHQ-9 Item 9 Flag: Thoughts of self-harm reported")
             with r_col2:
-                if not s_df.empty and s_df["valid_sleep"].sum() > 0:
-                    mean_tst = s_df.loc[s_df["valid_sleep"], "tst_hours"].mean()
-                    mean_se = s_df.loc[s_df["valid_sleep"], "sleep_efficiency_pct"].mean()
+                val_mask = s_df["valid_sleep"].fillna(False).astype(bool) if (not s_df.empty and "valid_sleep" in s_df.columns) else None
+                if val_mask is not None and val_mask.sum() > 0:
+                    mean_tst = s_df.loc[val_mask, "tst_hours"].mean()
+                    mean_se = s_df.loc[val_mask, "sleep_efficiency_pct"].mean()
                     st.metric("30-Day Mean TST", f"{mean_tst:.1f} h")
                     st.caption(f"Sleep Efficiency: {mean_se:.0f}%")
                 else:
@@ -171,9 +172,10 @@ def patient_review():
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Sleep Nights", f"{c['sleep_nights']} / {c['expected_days']}")
     m2.metric("Mood Days", f"{c['mood_days']} / {c['expected_days']}")
-    if not sleep_df.empty and sleep_df["valid_sleep"].sum() > 0:
-        m3.metric("Mean TST", f"{sleep_df.loc[sleep_df['valid_sleep'], 'tst_hours'].mean():.1f} h")
-        m4.metric("Mean SE", f"{sleep_df.loc[sleep_df['valid_sleep'], 'sleep_efficiency_pct'].mean():.0f}%")
+    val_mask = sleep_df["valid_sleep"].fillna(False).astype(bool) if (not sleep_df.empty and "valid_sleep" in sleep_df.columns) else None
+    if val_mask is not None and val_mask.sum() > 0:
+        m3.metric("Mean TST", f"{sleep_df.loc[val_mask, 'tst_hours'].mean():.1f} h")
+        m4.metric("Mean SE", f"{sleep_df.loc[val_mask, 'sleep_efficiency_pct'].mean():.0f}%")
     else:
         m3.metric("Mean TST", "—")
         m4.metric("Mean SE", "—")

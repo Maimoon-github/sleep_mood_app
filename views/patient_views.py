@@ -78,9 +78,10 @@ def dashboard():
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Valid sleep nights", f"{c['sleep_nights']} / {c['expected_days']}")
     m2.metric("Days with mood data", f"{c['mood_days']} / {c['expected_days']}")
-    if not sleep_df.empty and sleep_df["valid_sleep"].sum() > 0:
-        m3.metric("Mean TST", f"{sleep_df.loc[sleep_df['valid_sleep'], 'tst_hours'].mean():.1f} h")
-        m4.metric("Mean SE", f"{sleep_df.loc[sleep_df['valid_sleep'], 'sleep_efficiency_pct'].mean():.0f}%")
+    val_mask = sleep_df["valid_sleep"].fillna(False).astype(bool) if (not sleep_df.empty and "valid_sleep" in sleep_df.columns) else None
+    if val_mask is not None and val_mask.sum() > 0:
+        m3.metric("Mean TST", f"{sleep_df.loc[val_mask, 'tst_hours'].mean():.1f} h")
+        m4.metric("Mean SE", f"{sleep_df.loc[val_mask, 'sleep_efficiency_pct'].mean():.0f}%")
     else:
         m3.metric("Mean TST", "—")
         m4.metric("Mean SE", "—")

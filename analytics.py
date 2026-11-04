@@ -31,9 +31,12 @@ def _ci_text(ci) -> str:
 
 
 def sleep_summary(df: pd.DataFrame) -> list[str]:
-    if df.empty or "valid_sleep" not in df or df["valid_sleep"].sum() == 0:
+    if df.empty or "valid_sleep" not in df:
         return ["No valid sleep-diary nights are available for the selected period."]
-    sub = df[df["valid_sleep"]]
+    valid_mask = df["valid_sleep"].fillna(False).astype(bool)
+    if valid_mask.sum() == 0:
+        return ["No valid sleep-diary nights are available for the selected period."]
+    sub = df[valid_mask]
     n = len(sub)
     mean_tst = sub["tst_hours"].mean()
     mean_se = sub["sleep_efficiency_pct"].mean()
@@ -90,9 +93,10 @@ def weekly_summary(df: pd.DataFrame) -> list[str]:
     lines = []
     g = d.groupby("week")
     for week, sub in g:
-        n_sleep = int(sub["valid_sleep"].sum()) if "valid_sleep" in sub else 0
+        val_mask = sub["valid_sleep"].fillna(False).astype(bool) if "valid_sleep" in sub else pd.Series(False, index=sub.index)
+        n_sleep = int(val_mask.sum())
         n_mood = int(sub["mood_mean"].notna().sum()) if "mood_mean" in sub else 0
-        mean_tst = sub.loc[sub["valid_sleep"], "tst_hours"].mean() if n_sleep else np.nan
+        mean_tst = sub.loc[val_mask, "tst_hours"].mean() if n_sleep else np.nan
         mean_mood = sub.loc[sub["mood_mean"].notna(), "mood_mean"].mean() if n_mood else np.nan
         lines.append(
             f"Week {week}: {n_sleep} sleep night(s) (mean TST {_fmt(mean_tst)} h), "

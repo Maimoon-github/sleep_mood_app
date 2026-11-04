@@ -103,8 +103,11 @@ def compute_social_jetlag(df: pd.DataFrame) -> dict:
     }
     if df is None or df.empty or "mid_sleep_minutes" not in df.columns or "date" not in df.columns:
         return res
-    sub = df.dropna(subset=["mid_sleep_minutes", "valid_sleep"]).copy()
-    sub = sub[sub["valid_sleep"]]
+    if "valid_sleep" in df.columns:
+        val_mask = df["valid_sleep"].fillna(False).astype(bool)
+        sub = df[val_mask].dropna(subset=["mid_sleep_minutes"]).copy()
+    else:
+        sub = df.dropna(subset=["mid_sleep_minutes"]).copy()
     if len(sub) < 4:
         return res
 
@@ -243,9 +246,12 @@ def build_sleep_dataframe(entries: list[dict]) -> pd.DataFrame:
             "tst_min": m["tst_min"],
             "tst_hours": m["tst_min"] / 60.0 if pd.notna(m["tst_min"]) else np.nan,
             "sleep_efficiency_pct": m["sleep_efficiency_pct"],
-            "valid_sleep": m["valid"],
+            "valid_sleep": bool(m["valid"]),
         })
-    return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+    df = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+    if not df.empty and "valid_sleep" in df.columns:
+        df["valid_sleep"] = df["valid_sleep"].fillna(False).astype(bool)
+    return df
 
 
 def build_mood_daily_dataframe(entries: list[dict]) -> pd.DataFrame:
@@ -313,6 +319,9 @@ def merge_sleep_mood(sleep_df: pd.DataFrame, mood_daily: pd.DataFrame) -> pd.Dat
     for col, default_val in STANDARD_MOOD_COLS.items():
         if col not in df.columns:
             df[col] = default_val
+
+    # Guarantee valid_sleep is always a non-null boolean Series
+    df["valid_sleep"] = df["valid_sleep"].fillna(False).astype(bool)
 
     return df.sort_values("date").reset_index(drop=True)
 
@@ -385,7 +394,7 @@ def completeness(df: pd.DataFrame, start: date, end: date) -> dict:
                 "sleep_completeness_pct": 0.0, "mood_completeness_pct": 0.0}
     mask = (df["date"].dt.date >= start) & (df["date"].dt.date <= end)
     sub = df.loc[mask]
-    sleep_n = int(sub["valid_sleep"].sum()) if "valid_sleep" in sub else 0
+    sleep_n = int(sub["valid_sleep"].fillna(False).astype(bool).sum()) if "valid_sleep" in sub else 0
     mood_n = int(sub["mood_mean"].notna().sum()) if "mood_mean" in sub else 0
     return {
         "expected_days": expected,
