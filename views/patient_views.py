@@ -146,11 +146,11 @@ def dashboard():
                 with mc1:
                     chart_intra = viz.intraday_mood_chart(m_match)
                     if chart_intra:
-                        st.altair_chart(chart_intra, use_container_width=True)
+                        st.altair_chart(chart_intra, width="stretch")
                 with mc2:
                     chart_circ = viz.circumplex_affect_chart(m_match)
                     if chart_circ:
-                        st.altair_chart(chart_circ, use_container_width=True)
+                        st.altair_chart(chart_circ, width="stretch")
 
                 st.markdown("**Logged Momentary Check-ins**")
                 m_table = pd.DataFrame(m_match).copy()
@@ -167,7 +167,7 @@ def dashboard():
                         }
                     ),
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.info(f"No mood check-ins logged on {selected_date_str}.")
@@ -180,13 +180,13 @@ def dashboard():
         with wc1:
             dow_chart = viz.day_of_week_chart(df)
             if dow_chart:
-                st.altair_chart(dow_chart, use_container_width=True)
+                st.altair_chart(dow_chart, width="stretch")
             else:
                 st.info("Insufficient data for day-of-week breakdown.")
         with wc2:
             comp_chart = viz.weekday_vs_weekend_comparison_chart(df)
             if comp_chart:
-                st.altair_chart(comp_chart, use_container_width=True)
+                st.altair_chart(comp_chart, width="stretch")
             else:
                 st.info("Need both weekday and weekend entries for comparison.")
 
@@ -204,7 +204,7 @@ def dashboard():
 
         debt_chart = viz.sleep_debt_chart(df)
         if debt_chart:
-            st.altair_chart(debt_chart, use_container_width=True)
+            st.altair_chart(debt_chart, width="stretch")
 
     with tab_month:
         st.markdown("### Monthly Macro Assessment (30-Day Dynamics)")
@@ -212,7 +212,7 @@ def dashboard():
 
         timeline = viz.sleep_mood_timeline(df)
         if timeline:
-            st.altair_chart(timeline, use_container_width=True)
+            st.altair_chart(timeline, width="stretch")
         else:
             st.info("No sleep or mood data available.")
 
@@ -220,21 +220,21 @@ def dashboard():
         with mc1:
             cal_mood = viz.calendar_heatmap(df, "mood_mean", "Daily Mood Calendar Heatmap")
             if cal_mood:
-                st.altair_chart(cal_mood, use_container_width=True)
+                st.altair_chart(cal_mood, width="stretch")
         with mc2:
             cal_sleep = viz.calendar_heatmap(df, "tst_hours", "Daily Sleep Duration (TST) Calendar Heatmap")
             if cal_sleep:
-                st.altair_chart(cal_sleep, use_container_width=True)
+                st.altair_chart(cal_sleep, width="stretch")
 
         mc3, mc4 = st.columns(2)
         with mc3:
             dist_chart = viz.mood_distribution(df)
             if dist_chart:
-                st.altair_chart(dist_chart, use_container_width=True)
+                st.altair_chart(dist_chart, width="stretch")
         with mc4:
             timing_chart = viz.sleep_timing_chart(df)
             if timing_chart:
-                st.altair_chart(timing_chart, use_container_width=True)
+                st.altair_chart(timing_chart, width="stretch")
 
     with tab_year:
         st.markdown("### Yearly & Longitudinal Assessment")
@@ -242,7 +242,7 @@ def dashboard():
 
         ann_chart = viz.annual_monthly_trajectory(df)
         if ann_chart:
-            st.altair_chart(ann_chart, use_container_width=True)
+            st.altair_chart(ann_chart, width="stretch")
         else:
             st.info("Annual macro trajectory requires entries across at least two distinct calendar months.")
 
@@ -255,7 +255,7 @@ def dashboard():
                     st.markdown(f"**{q_name} Trajectory**")
                     q_chart = viz.questionnaire_trajectory(qdf, q_name)
                     if q_chart:
-                        st.altair_chart(q_chart, use_container_width=True)
+                        st.altair_chart(q_chart, width="stretch")
                 else:
                     st.info(f"No {q_name} records.")
 
@@ -267,7 +267,7 @@ def dashboard():
         )
         heat = viz.correlation_heatmap(df)
         if heat:
-            st.altair_chart(heat, use_container_width=True)
+            st.altair_chart(heat, width="stretch")
         else:
             st.info(f"At least {config.MIN_PAIRS_FOR_CORRELATION} paired observations are required for a correlation matrix.")
 
@@ -280,7 +280,7 @@ def dashboard():
                 "Sleep Tonight (TST hours)", "Next-Day Mood (/10)",
             )
             if sc1:
-                st.altair_chart(sc1, use_container_width=True)
+                st.altair_chart(sc1, width="stretch")
             else:
                 st.info("Insufficient paired data for sleep → next-day mood.")
         with ac2:
@@ -290,7 +290,7 @@ def dashboard():
                 "Today's Mood (/10)", "Tonight's Sleep Quality (/5)",
             )
             if sc2:
-                st.altair_chart(sc2, use_container_width=True)
+                st.altair_chart(sc2, width="stretch")
             else:
                 st.info("Insufficient paired data for mood → night sleep quality.")
 
@@ -352,7 +352,7 @@ def sleep_entry():
                 "sleep_quality": "Quality (/5)",
             }),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         st.markdown("**Delete an entry**")
         with st.form("sleep_delete_form"):
@@ -418,7 +418,7 @@ def mood_entry():
                 "dominant_emotion": "Emotion",
             }),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         st.markdown("**Delete an entry**")
         with st.form("mood_delete_form"):
@@ -518,11 +518,11 @@ def questionnaires():
             st.markdown(f"**{key} history** ({len(qdf)} entries; {len(qdf) - visible} private)")
             st.dataframe(
                 qdf[["administered_at", "total_score", "severity_band", "visible_to_clinician"]],
-                hide_index=True, use_container_width=True,
+                hide_index=True, width="stretch",
             )
             chart = viz.questionnaire_trajectory(qdf, key)
             if chart:
-                st.altair_chart(chart, use_container_width=True)
+                st.altair_chart(chart, width="stretch")
 
 
 def my_data():
@@ -540,8 +540,8 @@ def my_data():
             file_name=f"my_sleep_mood_data_{date.today().isoformat()}.json",
             mime="application/json",
         )
-        st.dataframe(pd.DataFrame(data["sleep_entries"]).tail(5), hide_index=True, use_container_width=True)
-        st.dataframe(pd.DataFrame(data["mood_entries"]).tail(5), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(data["sleep_entries"]).tail(5), hide_index=True, width="stretch")
+        st.dataframe(pd.DataFrame(data["mood_entries"]).tail(5), hide_index=True, width="stretch")
 
     st.markdown("---")
     st.markdown("**Delete my account and all my data**")

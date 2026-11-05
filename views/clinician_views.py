@@ -109,7 +109,7 @@ def patient_list():
                     st.caption("No questionnaires shared")
             with r_col5:
                 st.write("")
-                if st.button("Review Patient", key=f"rev_{p_id}", type="primary", use_container_width=True):
+                if st.button("Review Patient", key=f"rev_{p_id}", type="primary", width="stretch"):
                     st.session_state["review_patient_id"] = p_id
                     st.session_state["review_patient_name"] = p_name
                     # Switch page to patient review in session state
@@ -238,11 +238,11 @@ def patient_review():
                 with mc1:
                     chart_intra = viz.intraday_mood_chart(m_match)
                     if chart_intra:
-                        st.altair_chart(chart_intra, use_container_width=True)
+                        st.altair_chart(chart_intra, width="stretch")
                 with mc2:
                     chart_circ = viz.circumplex_affect_chart(m_match)
                     if chart_circ:
-                        st.altair_chart(chart_circ, use_container_width=True)
+                        st.altair_chart(chart_circ, width="stretch")
 
                 st.markdown("**Logged Momentary Check-Ins**")
                 m_table = pd.DataFrame(m_match).copy()
@@ -257,7 +257,7 @@ def patient_review():
                         "notes": "Patient Notes",
                     }),
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.info(f"No mood check-ins logged on {selected_date_str}.")
@@ -270,13 +270,13 @@ def patient_review():
         with wc1:
             dow_chart = viz.day_of_week_chart(df)
             if dow_chart:
-                st.altair_chart(dow_chart, use_container_width=True)
+                st.altair_chart(dow_chart, width="stretch")
             else:
                 st.info("Insufficient data for day-of-week breakdown.")
         with wc2:
             comp_chart = viz.weekday_vs_weekend_comparison_chart(df)
             if comp_chart:
-                st.altair_chart(comp_chart, use_container_width=True)
+                st.altair_chart(comp_chart, width="stretch")
             else:
                 st.info("Need both weekday and weekend entries for comparison.")
 
@@ -295,7 +295,7 @@ def patient_review():
 
         debt_chart = viz.sleep_debt_chart(df)
         if debt_chart:
-            st.altair_chart(debt_chart, use_container_width=True)
+            st.altair_chart(debt_chart, width="stretch")
 
     with tab_month:
         st.markdown("### Monthly Macro Assessment (30-Day Dynamics)")
@@ -303,7 +303,7 @@ def patient_review():
 
         timeline = viz.sleep_mood_timeline(df)
         if timeline:
-            st.altair_chart(timeline, use_container_width=True)
+            st.altair_chart(timeline, width="stretch")
         else:
             st.info("No sleep or mood data available.")
 
@@ -311,21 +311,21 @@ def patient_review():
         with mc1:
             cal_mood = viz.calendar_heatmap(df, "mood_mean", "Daily Mood Calendar Heatmap")
             if cal_mood:
-                st.altair_chart(cal_mood, use_container_width=True)
+                st.altair_chart(cal_mood, width="stretch")
         with mc2:
             cal_sleep = viz.calendar_heatmap(df, "tst_hours", "Daily Sleep Duration (TST) Calendar Heatmap")
             if cal_sleep:
-                st.altair_chart(cal_sleep, use_container_width=True)
+                st.altair_chart(cal_sleep, width="stretch")
 
         mc3, mc4 = st.columns(2)
         with mc3:
             dist_chart = viz.mood_distribution(df)
             if dist_chart:
-                st.altair_chart(dist_chart, use_container_width=True)
+                st.altair_chart(dist_chart, width="stretch")
         with mc4:
             timing_chart = viz.sleep_timing_chart(df)
             if timing_chart:
-                st.altair_chart(timing_chart, use_container_width=True)
+                st.altair_chart(timing_chart, width="stretch")
 
     with tab_year:
         st.markdown("### Yearly & Longitudinal Assessment")
@@ -333,7 +333,7 @@ def patient_review():
 
         ann_chart = viz.annual_monthly_trajectory(df)
         if ann_chart:
-            st.altair_chart(ann_chart, use_container_width=True)
+            st.altair_chart(ann_chart, width="stretch")
         else:
             st.info("Annual macro trajectory requires entries across at least two distinct calendar months.")
 
@@ -346,7 +346,7 @@ def patient_review():
                     st.markdown(f"**{q_name} Trajectory**")
                     q_chart = viz.questionnaire_trajectory(qdf, q_name)
                     if q_chart:
-                        st.altair_chart(q_chart, use_container_width=True)
+                        st.altair_chart(q_chart, width="stretch")
                 else:
                     st.info(f"No {q_name} records shared.")
 
@@ -358,7 +358,7 @@ def patient_review():
         )
         heat = viz.correlation_heatmap(df)
         if heat:
-            st.altair_chart(heat, use_container_width=True)
+            st.altair_chart(heat, width="stretch")
         else:
             st.info(f"At least {config.MIN_PAIRS_FOR_CORRELATION} paired observations are required for a correlation matrix.")
 
@@ -371,7 +371,7 @@ def patient_review():
                 "Sleep Tonight (TST hours)", "Next-Day Mood (/10)",
             )
             if sc1:
-                st.altair_chart(sc1, use_container_width=True)
+                st.altair_chart(sc1, width="stretch")
             else:
                 st.info("Insufficient paired data for sleep → next-day mood.")
         with ac2:
@@ -381,7 +381,7 @@ def patient_review():
                 "Today's Mood (/10)", "Tonight's Sleep Quality (/5)",
             )
             if sc2:
-                st.altair_chart(sc2, use_container_width=True)
+                st.altair_chart(sc2, width="stretch")
             else:
                 st.info("Insufficient paired data for mood → night sleep quality.")
 
@@ -396,10 +396,10 @@ def patient_review():
             qdf = pd.DataFrame(database.get_questionnaires(patient_id, key, viewer_role="clinician"))
             if not qdf.empty:
                 st.markdown(f"#### {key}")
-                st.dataframe(qdf[["administered_at", "total_score", "severity_band"]], hide_index=True, use_container_width=True)
+                st.dataframe(qdf[["administered_at", "total_score", "severity_band"]], hide_index=True, width="stretch")
                 chart = viz.questionnaire_trajectory(qdf, key)
                 if chart:
-                    st.altair_chart(chart, use_container_width=True)
+                    st.altair_chart(chart, width="stretch")
 
                 if key == "PHQ-9":
                     positives = []
@@ -488,7 +488,7 @@ def data_quality():
             "Earliest Record": entries[0]["entry_date"] if entries else "None",
             "Latest Record": entries[-1]["entry_date"] if entries else "None",
         })
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
     st.markdown("---")
     st.markdown("### Clinician Audit Access Log")
@@ -498,6 +498,6 @@ def data_quality():
     if p_obj:
         logs = database.get_access_log(p_obj["user_id"])
         if logs:
-            st.dataframe(pd.DataFrame(logs)[["username", "action", "timestamp"]], hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(logs)[["username", "action", "timestamp"]], hide_index=True, width="stretch")
         else:
             st.info("No access events logged for this patient.")
