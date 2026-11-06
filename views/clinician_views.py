@@ -28,15 +28,6 @@ def patient_list():
     st.subheader("Clinical Patient Cohort Management")
     st.info(config.CLINICAL_DECISION_SUPPORT_NOTICE)
 
-    # Top action bar: Link new patient or Load Demo Cohort
-    c1, c2 = st.columns([3, 2])
-    with c2:
-        if st.button("⚡ Load Clinical Demo Cohort", type="primary",
-                     help="Populates 4 realistic clinical phenotype demonstration patients (Alex, Sarah, David, Elena) with 90 days of longitudinal data for immediate exploration."):
-            created = database.seed_demo_patients(_clinician_id())
-            st.success(f"Demonstration cohort loaded: {', '.join(created) if created else 'Already populated'}.")
-            st.rerun()
-
     patients = database.get_patients_for_clinician(_clinician_id())
     if not patients:
         st.warning("No patients are linked to your clinician account yet.")

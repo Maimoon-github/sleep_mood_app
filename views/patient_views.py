@@ -550,6 +550,6 @@ def my_data():
     if st.button("Delete my account and data", type="primary",
                  disabled=confirm_text != "DELETE"):
         database.delete_account_and_data(_patient_id())
-        st.success("All of your data has been deleted.")
         st.session_state.user = None
+        st.session_state["flash_message"] = "Your account and all associated data have been permanently deleted."
         st.rerun()

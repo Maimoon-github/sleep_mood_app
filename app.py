@@ -9,7 +9,7 @@ import streamlit as st
 import auth
 import config
 import database
-from views import clinician_views, patient_views
+from views import account_views, clinician_views, patient_views
 
 st.set_page_config(
     page_title=config.APP_NAME,
@@ -34,23 +34,31 @@ def login_page():
         "A research-prototype application for systematic sleep and mood self-monitoring. "
         "It does not provide diagnoses or emergency care. If you are in crisis, contact local emergency services."
     )
-    tab_login, tab_signup, tab_demo = st.tabs(["Log in", "Create account", "⚡ Quick Demo Access"])
+
+    if st.session_state.get("flash_message"):
+        st.success(st.session_state.pop("flash_message"))
+
+    tab_login, tab_signup = st.tabs(["Log in", "Create account"])
     with tab_login:
         with st.form("login_form"):
-            username = st.text_input("Username")
+            username = st.text_input("Username", help="Usernames are case-insensitive.")
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button("Log in")
             if submitted:
-                user = auth.login(username, password)
-                if user:
-                    st.session_state.user = user
-                    st.session_state.page = "Dashboard"
-                    st.rerun()
+                clean_username = username.strip()
+                if not clean_username or not password:
+                    st.error("Please enter both username and password.")
                 else:
-                    st.error("Invalid username or password.")
+                    user = auth.login(clean_username, password)
+                    if user:
+                        st.session_state.user = user
+                        st.session_state.page = "Dashboard" if user["role"] == "patient" else "Patient List"
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password.")
     with tab_signup:
         with st.form("signup_form"):
-            new_username = st.text_input("Choose a username")
+            new_username = st.text_input("Choose a username (3-30 characters)")
             new_password = st.text_input("Choose a password (min 8 characters)", type="password")
             role = st.selectbox("I am a", ["patient", "clinician"])
             submitted = st.form_submit_button("Create account")
@@ -60,21 +68,6 @@ def login_page():
                     st.success(msg)
                 else:
                     st.error(msg)
-    with tab_demo:
-        st.markdown("**Instant Evaluator / Clinician Demonstration Mode**")
-        st.caption(
-            "Quickly evaluate the longitudinal assessment dashboard with pre-populated "
-            "clinical phenotypes (Circadian delay, Chronic insomnia, Bipolar spectrum, and Healthy baseline)."
-        )
-        if st.button("🚀 Enter as Demo Psychologist (Pre-loaded Cohort)", type="primary"):
-            demo_user = database.get_user_by_username("dr_clarke")
-            if not demo_user:
-                auth.signup("dr_clarke", "clinicaldemo123", "clinician")
-                demo_user = database.get_user_by_username("dr_clarke")
-            database.seed_demo_patients(demo_user["id"])
-            st.session_state.user = demo_user
-            st.session_state.page = "Patient List"
-            st.rerun()
     with st.expander("If you are in crisis"):
         st.info(config.CRISIS_RESOURCES)
 
@@ -90,8 +83,7 @@ def sidebar():
         st.rerun()
     st.sidebar.markdown("---")
     st.sidebar.caption(
-        "Research prototype. Health data is stored locally in SQLite. "
-        "Not a production HIPAA/GDPR-compliant system."
+        "Durable server-side storage. Credentials are valid across sessions, restarts, and devices."
     )
 
 
@@ -104,6 +96,7 @@ def patient_app():
         "Daily Notes": patient_views.daily_notes,
         "Questionnaires": patient_views.questionnaires,
         "My Data": patient_views.my_data,
+        "Account Settings": account_views.account_settings,
     }
     choice = st.sidebar.radio("Navigate", list(pages.keys()), key="patient_nav")
     st.sidebar.markdown("---")
@@ -120,6 +113,7 @@ def clinician_app():
         "Patient List": clinician_views.patient_list,
         "Patient Review": clinician_views.patient_review,
         "Data Quality": clinician_views.data_quality,
+        "Account Settings": account_views.account_settings,
     }
     choice = st.sidebar.radio("Navigate", list(pages.keys()), key="clinician_nav")
     st.sidebar.markdown("---")

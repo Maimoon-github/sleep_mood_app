@@ -8,8 +8,10 @@ never applied to an individual as a diagnostic rule.
 import os
 
 APP_NAME = "Sleep & Mood Longitudinal Assessment"
-APP_VERSION = "0.3.0 (evidence-based research prototype)"
-DB_PATH = os.getenv("SMA_DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sleep_mood.db"))
+APP_VERSION = "0.4.0 (evidence-based research prototype)"
+_default_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sleep_mood.db")
+DB_PATH = os.path.abspath(os.path.expanduser(os.getenv("SMA_DB_PATH", _default_db)))
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Sleep reference values
